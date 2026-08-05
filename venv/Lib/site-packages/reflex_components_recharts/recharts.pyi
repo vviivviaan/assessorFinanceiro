@@ -109,7 +109,7 @@ class RechartsCharts(NoSSRComponent, MemoizationLeaf):
         on_unmount: EventType[()] | None = None,
         **props,
     ) -> RechartsCharts:
-        """Create a new memoization leaf component.
+        """Create the component.
 
         Args:
             *children: The children of the component.
@@ -138,7 +138,7 @@ class RechartsCharts(NoSSRComponent, MemoizationLeaf):
             **props: The props of the component.
 
         Returns:
-            The memoization leaf
+            The component.
         """
 
 LiteralAnimationEasing = Literal["ease", "ease-in", "ease-out", "ease-in-out", "linear"]

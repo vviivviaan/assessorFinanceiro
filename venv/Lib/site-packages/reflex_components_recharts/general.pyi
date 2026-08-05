@@ -54,7 +54,7 @@ class ResponsiveContainer(Recharts, MemoizationLeaf):
         on_unmount: EventType[()] | None = None,
         **props,
     ) -> ResponsiveContainer:
-        """Create a new memoization leaf component.
+        """Create the component.
 
         Args:
             *children: The children of the component.
@@ -90,7 +90,7 @@ class ResponsiveContainer(Recharts, MemoizationLeaf):
             **props: The props of the component.
 
         Returns:
-            The memoization leaf
+            The component.
         """
 
 class Legend(Recharts):
@@ -614,9 +614,242 @@ class Cell(Recharts):
             The component.
         """
 
+class SvgElement(Recharts):
+    @classmethod
+    def create(
+        cls,
+        *children,
+        style: Sequence[Mapping[str, Any]]
+        | Mapping[str, Any]
+        | Var[Mapping[str, Any]]
+        | Breakpoints
+        | None = None,
+        key: Any | None = None,
+        id: Any | None = None,
+        ref: Var | None = None,
+        class_name: Any | None = None,
+        custom_attrs: dict[str, Any | Var] | None = None,
+        on_blur: EventType[()] | None = None,
+        on_click: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_context_menu: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_double_click: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_focus: EventType[()] | None = None,
+        on_mount: EventType[()] | None = None,
+        on_mouse_down: EventType[()] | None = None,
+        on_mouse_enter: EventType[()] | None = None,
+        on_mouse_leave: EventType[()] | None = None,
+        on_mouse_move: EventType[()] | None = None,
+        on_mouse_out: EventType[()] | None = None,
+        on_mouse_over: EventType[()] | None = None,
+        on_mouse_up: EventType[()] | None = None,
+        on_scroll: EventType[()] | None = None,
+        on_scroll_end: EventType[()] | None = None,
+        on_unmount: EventType[()] | None = None,
+        **props,
+    ) -> SvgElement:
+        """Create the component.
+
+        Args:
+            *children: The children of the component.
+            style: The style of the component.
+            key: A unique key for the component.
+            id: The id for the component.
+            ref: The Var to pass as the ref to the component.
+            class_name: The class name for the component.
+            custom_attrs: Attributes passed directly to the component.
+            on_focus: Fired when the element (or some element inside of it) receives focus. For example, it is called when the user clicks on a text input.
+            on_blur: Fired when focus has left the element (or left some element inside of it). For example, it is called when the user clicks outside of a focused text input.
+            on_click: Fired when the user clicks on an element. For example, it's called when the user clicks on a button.
+            on_context_menu: Fired when the user right-clicks on an element.
+            on_double_click: Fired when the user double-clicks on an element.
+            on_mouse_down: Fired when the user presses a mouse button on an element.
+            on_mouse_enter: Fired when the mouse pointer enters the element.
+            on_mouse_leave: Fired when the mouse pointer leaves the element.
+            on_mouse_move: Fired when the mouse pointer moves over the element.
+            on_mouse_out: Fired when the mouse pointer moves out of the element.
+            on_mouse_over: Fired when the mouse pointer moves onto the element.
+            on_mouse_up: Fired when the user releases a mouse button on an element.
+            on_scroll: Fired when the user scrolls the element.
+            on_scroll_end: Fired when scrolling ends on the element.
+            on_mount: Fired when the component is mounted to the page.
+            on_unmount: Fired when the component is removed from the page. Only called during navigation, not on page refresh.
+            **props: The props of the component.
+
+        Returns:
+            The component.
+        """
+
+class Layer(SvgElement):
+    @classmethod
+    def create(
+        cls,
+        *children,
+        style: Sequence[Mapping[str, Any]]
+        | Mapping[str, Any]
+        | Var[Mapping[str, Any]]
+        | Breakpoints
+        | None = None,
+        key: Any | None = None,
+        id: Any | None = None,
+        ref: Var | None = None,
+        class_name: Any | None = None,
+        custom_attrs: dict[str, Any | Var] | None = None,
+        on_blur: EventType[()] | None = None,
+        on_click: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_context_menu: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_double_click: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_focus: EventType[()] | None = None,
+        on_mount: EventType[()] | None = None,
+        on_mouse_down: EventType[()] | None = None,
+        on_mouse_enter: EventType[()] | None = None,
+        on_mouse_leave: EventType[()] | None = None,
+        on_mouse_move: EventType[()] | None = None,
+        on_mouse_out: EventType[()] | None = None,
+        on_mouse_over: EventType[()] | None = None,
+        on_mouse_up: EventType[()] | None = None,
+        on_scroll: EventType[()] | None = None,
+        on_scroll_end: EventType[()] | None = None,
+        on_unmount: EventType[()] | None = None,
+        **props,
+    ) -> Layer:
+        """Create the component.
+
+        Args:
+            *children: The children of the component.
+            style: The style of the component.
+            key: A unique key for the component.
+            id: The id for the component.
+            ref: The Var to pass as the ref to the component.
+            class_name: The class name for the component.
+            custom_attrs: Attributes passed directly to the component.
+            on_focus: Fired when the element (or some element inside of it) receives focus. For example, it is called when the user clicks on a text input.
+            on_blur: Fired when focus has left the element (or left some element inside of it). For example, it is called when the user clicks outside of a focused text input.
+            on_click: Fired when the user clicks on an element. For example, it's called when the user clicks on a button.
+            on_context_menu: Fired when the user right-clicks on an element.
+            on_double_click: Fired when the user double-clicks on an element.
+            on_mouse_down: Fired when the user presses a mouse button on an element.
+            on_mouse_enter: Fired when the mouse pointer enters the element.
+            on_mouse_leave: Fired when the mouse pointer leaves the element.
+            on_mouse_move: Fired when the mouse pointer moves over the element.
+            on_mouse_out: Fired when the mouse pointer moves out of the element.
+            on_mouse_over: Fired when the mouse pointer moves onto the element.
+            on_mouse_up: Fired when the user releases a mouse button on an element.
+            on_scroll: Fired when the user scrolls the element.
+            on_scroll_end: Fired when scrolling ends on the element.
+            on_mount: Fired when the component is mounted to the page.
+            on_unmount: Fired when the component is removed from the page. Only called during navigation, not on page refresh.
+            **props: The props of the component.
+
+        Returns:
+            The component.
+        """
+
+class Rectangle(SvgElement):
+    @classmethod
+    def create(
+        cls,
+        *children,
+        x: Var[float | int] | float | int | None = None,
+        y: Var[float | int] | float | int | None = None,
+        width: Var[float | int] | float | int | None = None,
+        height: Var[float | int] | float | int | None = None,
+        radius: Sequence[float | int]
+        | Var[Sequence[float | int] | float | int]
+        | float
+        | int
+        | None = None,
+        fill: Color | Var[Color | str] | str | None = None,
+        fill_opacity: Var[float] | float | None = None,
+        stroke: Color | Var[Color | str] | str | None = None,
+        stroke_width: Var[float | int | str] | float | int | str | None = None,
+        is_animation_active: Var[bool] | bool | None = None,
+        is_update_animation_active: Var[bool] | bool | None = None,
+        animation_begin: Var[int] | int | None = None,
+        animation_duration: Var[int] | int | None = None,
+        animation_easing: Literal[
+            "ease", "ease-in", "ease-in-out", "ease-out", "linear"
+        ]
+        | Var[Literal["ease", "ease-in", "ease-in-out", "ease-out", "linear"]]
+        | None = None,
+        style: Sequence[Mapping[str, Any]]
+        | Mapping[str, Any]
+        | Var[Mapping[str, Any]]
+        | Breakpoints
+        | None = None,
+        key: Any | None = None,
+        id: Any | None = None,
+        ref: Var | None = None,
+        class_name: Any | None = None,
+        custom_attrs: dict[str, Any | Var] | None = None,
+        on_blur: EventType[()] | None = None,
+        on_click: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_context_menu: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_double_click: EventType[()] | EventType[PointerEventInfo] | None = None,
+        on_focus: EventType[()] | None = None,
+        on_mount: EventType[()] | None = None,
+        on_mouse_down: EventType[()] | None = None,
+        on_mouse_enter: EventType[()] | None = None,
+        on_mouse_leave: EventType[()] | None = None,
+        on_mouse_move: EventType[()] | None = None,
+        on_mouse_out: EventType[()] | None = None,
+        on_mouse_over: EventType[()] | None = None,
+        on_mouse_up: EventType[()] | None = None,
+        on_scroll: EventType[()] | None = None,
+        on_scroll_end: EventType[()] | None = None,
+        on_unmount: EventType[()] | None = None,
+        **props,
+    ) -> Rectangle:
+        """Create the component.
+
+        Args:
+            *children: The children of the component.
+            x: The x-coordinate of the top left corner of the rectangle. Default: 0
+            y: The y-coordinate of the top left corner of the rectangle. Default: 0
+            width: The width of the rectangle. Default: 0
+            height: The height of the rectangle. Default: 0
+            radius: The radius of the rectangle's corners. When a number, sets all four corners; when a sequence of four numbers, sets the radii of the top-left, top-right, bottom-right and bottom-left corners. Default: 0
+            fill: The fill color of the rectangle.
+            fill_opacity: The opacity of the rectangle fill.
+            stroke: The stroke color of the rectangle.
+            stroke_width: The width of the rectangle stroke.
+            is_animation_active: If set false, animation of the rectangle will be disabled. Default: False
+            is_update_animation_active: If set false, the animation of the rectangle when its coordinates or size update will be disabled. Default: False
+            animation_begin: Specifies when the animation should begin, the unit of this option is ms. Default: 0
+            animation_duration: Specifies the duration of animation, the unit of this option is ms. Default: 1500
+            animation_easing: The type of easing function. Default: "ease"
+            style: The style of the component.
+            key: A unique key for the component.
+            id: The id for the component.
+            ref: The Var to pass as the ref to the component.
+            class_name: The class name for the component.
+            custom_attrs: Attributes passed directly to the component.
+            on_focus: Fired when the element (or some element inside of it) receives focus. For example, it is called when the user clicks on a text input.
+            on_blur: Fired when focus has left the element (or left some element inside of it). For example, it is called when the user clicks outside of a focused text input.
+            on_click: Fired when the user clicks on an element. For example, it's called when the user clicks on a button.
+            on_context_menu: Fired when the user right-clicks on an element.
+            on_double_click: Fired when the user double-clicks on an element.
+            on_mouse_down: Fired when the user presses a mouse button on an element.
+            on_mouse_enter: Fired when the mouse pointer enters the element.
+            on_mouse_leave: Fired when the mouse pointer leaves the element.
+            on_mouse_move: Fired when the mouse pointer moves over the element.
+            on_mouse_out: Fired when the mouse pointer moves out of the element.
+            on_mouse_over: Fired when the mouse pointer moves onto the element.
+            on_mouse_up: Fired when the user releases a mouse button on an element.
+            on_scroll: Fired when the user scrolls the element.
+            on_scroll_end: Fired when scrolling ends on the element.
+            on_mount: Fired when the component is mounted to the page.
+            on_unmount: Fired when the component is removed from the page. Only called during navigation, not on page refresh.
+            **props: The props of the component.
+
+        Returns:
+            The component.
+        """
+
 responsive_container = ResponsiveContainer.create
 legend = Legend.create
 graphing_tooltip = tooltip = GraphingTooltip.create
 label = Label.create
 label_list = LabelList.create
 cell = Cell.create
+layer = Layer.create
+rectangle = Rectangle.create

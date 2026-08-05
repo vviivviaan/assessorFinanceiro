@@ -8,7 +8,7 @@ import datetime
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from reflex_base.components.component import NoSSRComponent
+from reflex_base.components.component import MemoizationLeaf, NoSSRComponent
 from reflex_base.event import EventType, PointerEventInfo
 from reflex_base.utils.imports import ImportDict
 from reflex_base.vars.base import Var
@@ -26,7 +26,7 @@ class MomentDelta:
     seconds: int | None
     milliseconds: int | None
 
-class Moment(NoSSRComponent):
+class Moment(NoSSRComponent, MemoizationLeaf):
     def add_imports(self) -> ImportDict: ...
     @classmethod
     def create(

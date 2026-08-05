@@ -2,10 +2,27 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 from agno.agent import Agent
+from agno.models.openai import OpenAIChat
 from agno.models.groq import Groq
 from agno.tools.yfinance import YFinanceTools
 
 load_dotenv()
+
+# --- FÁBRICA DE MODELOS (MODULARIDADE) ---
+def get_llm_model(provider_override: str = None):
+    """
+    Retorna o modelo de IA instanciado. 
+    Lê a variável LLM_PROVIDER do .env, permitindo alternar facilmente entre IAs.
+    """
+    # Lê do .env ou usa o valor passado na função. O padrão (se estiver vazio) é groq.
+    provider = provider_override or os.getenv("LLM_PROVIDER", "groq").lower()
+    
+    if provider == "openai":
+        return OpenAIChat(id="gpt-4o-mini")
+    else:
+        # Fallback e padrão: Groq
+        return Groq(id="llama-3.3-70b-versatile")
+# -----------------------------------------
 
 
 def get_data_extractor_agent() -> Agent:
@@ -38,21 +55,20 @@ def get_data_extractor_agent() -> Agent:
     Sua Resposta: []
     """
     return Agent(
-        model=Groq(id="meta-llama/llama-4-scout-17b-16e-instruct"),
+        model=get_llm_model(), # Chama a fábrica de modelos dinamicamente
         instructions=instructions
     )
 
 
 def get_financial_advisor(financial_data: str, chat_history: str = "") -> Agent:
-
-    # 1. Captura a data e hora exata do servidor em formato amigável (Brasília)
-    # Exemplo: "01/07/2026, Quarta-feira, 07:07:00"
-    # Nota: No Windows, pode ser necessário configurar o locale se quiser os dias em pt-br nativamente,
-    # mas o LLM é inteligente o suficiente para traduzir formatos padrão.
+    """
+    Agente conselheiro principal da interface.
+    """
+    # Captura a data e hora exata do servidor em formato amigável
     data_atual = datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
 
     instructions = f"""
-    Você é uma assessor financeiro pessoal empática, estratégica e amigável.
+    Você é uma assessor financeira pessoal empática, estratégica e amigável.
     
     CONTEXTO TEMPORAL:
     Hoje é exatamente: {data_atual}. 
@@ -79,7 +95,7 @@ def get_financial_advisor(financial_data: str, chat_history: str = "") -> Agent:
     """
 
     return Agent(
-        model=Groq(id="meta-llama/llama-4-scout-17b-16e-instruct"),
+        model=get_llm_model(), # Chama a fábrica de modelos dinamicamente
         instructions=instructions,
         markdown=True,
         tools=[YFinanceTools()]
