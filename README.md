@@ -39,7 +39,7 @@ O agente realiza um *onboarding* conversacional para descobrir os hobbies do usu
 
 1. **Clone o repositório e acesse a pasta:**
    ```bash
-   git clone https://github.com/guilhermbc/agno-assessor-financeiro.git
+   git clone https://github.com/vviivviaan/assessorFinanceiro.git
    cd agno-assessor-financeiro
    ```
 
