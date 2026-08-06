@@ -41,12 +41,24 @@ class AdvisorState(rx.State):
             
             transactions = db.query(Transaction).filter(Transaction.session_id == "default_user").all()
             
+            # --- NOVA LÓGICA DE CÁLCULO DETERMINÍSTICO ---
             category_totals = {}
-            total_gastos = 0
+            total_gastos = 0.0
+            total_receitas = 0.0
+
             for t in transactions:
-                if t.type.lower() == "debito":
-                    category_totals[t.category] = category_totals.get(t.category, 0) + abs(t.amount)
-                    total_gastos += abs(t.amount)
+                # abs() garante que não teremos erros matemáticos se a IA salvar valores negativos acidentalmente
+                valor = abs(float(t.amount)) 
+                tipo = t.type.lower().strip() # .strip() remove espaços extras
+
+                if tipo == "credito" or tipo == "crédito":
+                    total_receitas += valor
+                elif tipo == "debito" or tipo == "débito":
+                    total_gastos += valor
+                    category_totals[t.category] = category_totals.get(t.category, 0.0) + valor
+
+            saldo_atual = total_receitas - total_gastos
+            # -----------------------------------------------
 
             ## Mostrando cores diferentes no grafico de pizza 
             paleta_financeira = [
@@ -60,24 +72,29 @@ class AdvisorState(rx.State):
                 "#06b6d4",  # Ciano
                 "#a855f7",  # Púrpura
             ]
+            
             self.chart_data = [
                 {
-                    "name": str(k), # Garante que a chave seja string para o eixo
-                    "value": float(round(v, 2)), # Garante que o valor seja float/int
-                    # Escolhe a cor baseada no índice i na lista paleta_financeira
+                    "name": str(k),
+                    "value": float(round(v, 2)),
                     "fill": paleta_financeira[i % len(paleta_financeira)]
                 }
-                # category_totals é o resultado do groupby do pandas transformado em dict
                 for i, (k, v) in enumerate(category_totals.items())
             ]
             
-            # self.database_summary = f"Total Gasto Registrado: R$ {total_gastos:.2f}\nDetalhamento:\n"
-            # for k, v in category_totals.items():
-            #     self.database_summary += f"- {k}: R$ {v:.2f}\n"
+            # --- NOVA FORMATAÇÃO DO RESUMO PARA O AGENTE ---
+            self.database_summary = (
+                f"RESUMO ATUAL DO BANCO DE DADOS:\n"
+                f"Total Recebido (Créditos): R$ {total_receitas:.2f}\n"
+                f"Total Gasto Registrado (Débitos): R$ {total_gastos:.2f}\n"
+                f"Saldo Atual: R$ {saldo_atual:.2f}\n\n"
+                f"Detalhamento de Gastos por Categoria:\n"
+            )
 
-            # self.database_summary += f"Totalizando o gasto de R$ {total_gastos}"
+            for k, v in category_totals.items():
+                self.database_summary += f"- {k}: R$ {v:.2f}\n"
             
-            # print(self.database_summary)
+            print(self.database_summary)
 
     async def handle_upload(self, files: list[rx.UploadFile]):
         """Lê o CSV real enviado pelo usuário e salva no Banco de Dados."""
