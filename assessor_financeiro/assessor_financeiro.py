@@ -154,26 +154,29 @@ class AdvisorState(rx.State):
         self.is_uploading = False
 
     def extract_transactions_from_text(self, text: str):
-        """Passo 1 da Orquestração: Roda o Agente Extrator para pescar gastos do chat."""
-        extractor = get_data_extractor_agent()
-        response = extractor.run(text)
-        
-        match = re.search(r'\[.*\]', response.content, re.DOTALL)
-        if match:
+            """Passo 1 da Orquestração: Roda o Agente Extrator para pescar gastos do chat."""
+            extractor = get_data_extractor_agent()
+            response = extractor.run(text)
+            
             try:
-                novos_gastos = json.loads(match.group(0))
-                if novos_gastos:
+                # Com o output_schema, response.content já é a instância de ListaGastos (Pydantic)!
+                # Diga adeus ao re.search e ao json.loads.
+                lista_extraida = response.content 
+                
+                # Verifica se o agente retornou itens na lista
+                if hasattr(lista_extraida, 'gastos') and lista_extraida.gastos:
                     with rx.session() as db:
-                        for gasto in novos_gastos:
+                        for item in lista_extraida.gastos:
                             db.add(Transaction(
-                                category=gasto.get("category", "Geral"),
-                                amount=abs(float(gasto.get("amount", 0))),
-                                type=gasto.get("type", "Debito")
+                                category=item.category,
+                                amount=abs(float(item.amount)),
+                                type=item.type
                             ))
                         db.commit()
-                    self.on_load() 
+                    self.on_load() # Atualiza o dashboard e o resumo do banco
+                    
             except Exception as e:
-                print(f"Erro no parse do JSON: {e}")
+                print(f"Erro ao extrair e salvar transações estruturadas: {e}")
 
     def submit_message(self, form_data: dict):
         """Recebe os dados do formulário quando o usuário aperta Enter ou clica em Enviar."""
