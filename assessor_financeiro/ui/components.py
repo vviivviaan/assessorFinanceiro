@@ -228,15 +228,39 @@ def upload_button() -> rx.Component:
     )
 
 
+def open_finance_button() -> rx.Component:
+    """Botão da PoC de Open Finance: importa transações via um fluxo simulado
+    de consentimento/autorização, fiel ao contrato oficial (ver `core/open_finance/`)."""
+    return rx.button(
+        rx.icon("landmark", size=18),
+        on_click=AdvisorState.conectar_open_finance,
+        loading=AdvisorState.is_uploading,
+        disabled=AdvisorState.is_uploading,
+        size="3",
+        type="button",
+        color="blue",
+        background_color="var(--gray-1)",
+        high_contrast=True,
+        cursor="pointer",
+        radius="large",
+        border="none",
+        margin="none",
+        padding="none",
+        _hover={"background_color": "blue", "color": "white"},
+        title="Conectar Open Finance (PoC)",
+    )
+
+
 def chat_input_form() -> rx.Component:
     """Formulário de envio de mensagem (permite usar Enter para enviar)."""
     return rx.form(
         rx.hstack(
             upload_button(),
+            open_finance_button(),
             rx.input(
                 name="chat_input",  # Nome que o form_data vai capturar
                 placeholder="Ex: Gastei 150 no borracheiro...",
-                width="85%",
+                width="75%",
                 size="3",
             ),
             rx.button(

@@ -23,6 +23,12 @@ from assessor_financeiro.core.file_import_service import (
     parse_extrato_tabular,
 )
 from assessor_financeiro.core.telemetry import log_llm_call
+from assessor_financeiro.core.open_finance.mock_client import (
+    ConsentimentoNaoAutorizado,
+    OpenFinanceMockClient,
+)
+from assessor_financeiro.core.open_finance.importer import transacao_ofb_para_transacao_app
+from assessor_financeiro.core.open_finance.schemas import Permissao
 from assessor_financeiro.agents.advisor_agent import get_financial_advisor
 from assessor_financeiro.agents.extractor_agent import get_data_extractor_agent
 from assessor_financeiro.config import EXTRACTOR_LLM_PROVIDER, ADVISOR_LLM_PROVIDER
@@ -154,6 +160,82 @@ class AdvisorState(rx.State):
             add_chat_message(
                 role="agent",
                 content="❌ Ocorreu um erro ao tentar salvar os dados da sua planilha... Tente novamente.",
+            )
+
+        self.on_load()
+        self.is_uploading = False
+
+    def conectar_open_finance(self):
+        """PoC: importação automática de transações via Open Finance Brasil.
+
+        O app não é uma instituição credenciada no Diretório de Participantes
+        (sem certificado ICP-Brasil), então uma chamada real às APIs de
+        produção não é possível. `OpenFinanceMockClient` simula o fluxo
+        oficial (consentimento -> autorização -> contas -> transações) com o
+        mesmo formato de campos/enums da especificação real — trocar por uma
+        instituição de verdade significa reimplementar só aquele cliente.
+        """
+        self.is_uploading = True
+        add_chat_message(role="user", content="🏦 **Conectar Open Finance** solicitado.")
+        self.on_load()
+        yield
+
+        cliente = OpenFinanceMockClient()
+        try:
+            add_chat_message(
+                role="agent",
+                content=(
+                    "1/4 · Criando consentimento (permissões: leitura de contas "
+                    "e de transações)..."
+                ),
+            )
+            yield
+            consentimento = cliente.criar_consentimento(
+                permissoes=[Permissao.ACCOUNTS_READ, Permissao.ACCOUNTS_TRANSACTIONS_READ],
+            )
+
+            add_chat_message(
+                role="agent",
+                content=(
+                    f"2/4 · Consentimento `{consentimento.consentId}` criado. Em produção, "
+                    "você seria redirecionada agora para o app do seu banco pra autorizar "
+                    "o compartilhamento — simulando essa autorização..."
+                ),
+            )
+            yield
+            cliente.autorizar_consentimento(consentimento.consentId)
+
+            add_chat_message(role="agent", content="3/4 · Consentimento autorizado! Consultando contas...")
+            yield
+            conta = cliente.listar_contas(consentimento.consentId)[0]
+
+            add_chat_message(
+                role="agent",
+                content=(
+                    f"4/4 · Importando transações de {conta.brandName} "
+                    f"(ag. {conta.branchCode} / cc {conta.number}-{conta.checkDigit})..."
+                ),
+            )
+            yield
+            transacoes_ofb = cliente.listar_transacoes(consentimento.consentId, conta.accountId)
+            novas_transacoes = [transacao_ofb_para_transacao_app(t) for t in transacoes_ofb]
+            add_transactions(novas_transacoes)
+
+            add_chat_message(
+                role="agent",
+                content=(
+                    f"✅ **Importação concluída!** {len(novas_transacoes)} transações trazidas "
+                    "via Open Finance."
+                ),
+            )
+
+        except ConsentimentoNaoAutorizado as e:
+            add_chat_message(role="agent", content=f"❌ Consentimento recusado: {e}")
+        except Exception as e:
+            print("Erro na PoC de Open Finance:", e)
+            add_chat_message(
+                role="agent",
+                content="❌ Não consegui concluir a conexão com o Open Finance. Tente novamente.",
             )
 
         self.on_load()
