@@ -182,7 +182,7 @@ def chat_loading_indicator() -> rx.Component:
 
 
 def upload_button() -> rx.Component:
-    """Botão de anexo/upload de CSV, com drag-and-drop."""
+    """Botão de anexo/upload de extrato (CSV, XLSX, OFX/QFX ou PDF), com drag-and-drop."""
     return rx.upload(
         rx.button(
             rx.hstack(
@@ -208,7 +208,13 @@ def upload_button() -> rx.Component:
         rx.cond(AdvisorState.is_uploading, rx.spinner(size="2")),
         id="csv_upload",
         multiple=False,
-        accept={"text/csv": [".csv"]},
+        accept={
+            "text/csv": [".csv"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+            "application/vnd.ms-excel": [".xls"],
+            "application/x-ofx": [".ofx", ".qfx"],
+            "application/pdf": [".pdf"],
+        },
         max_files=1,
         on_drop=AdvisorState.handle_upload(rx.upload_files(upload_id="csv_upload")),
         border="none",

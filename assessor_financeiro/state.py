@@ -4,6 +4,7 @@ Conecta a UI ao banco de dados e aos agentes de IA. Não contém nenhum
 componente visual nem acesso direto ao banco — ambos ficam em `ui/` e
 `core/transaction_repository.py`, respectivamente.
 """
+from pathlib import Path
 from typing import Any
 
 import reflex as rx
@@ -16,7 +17,11 @@ from assessor_financeiro.core.transaction_repository import (
     get_transactions,
 )
 from assessor_financeiro.core.transaction_service import summarize_transactions
-from assessor_financeiro.core.csv_import_service import parse_transacoes_csv
+from assessor_financeiro.core.file_import_service import (
+    FORMATOS_SUPORTADOS,
+    extrair_texto_pdf,
+    parse_extrato_tabular,
+)
 from assessor_financeiro.core.telemetry import log_llm_call
 from assessor_financeiro.agents.advisor_agent import get_financial_advisor
 from assessor_financeiro.agents.extractor_agent import get_data_extractor_agent
@@ -63,7 +68,13 @@ class AdvisorState(rx.State):
         self.gastos_fmt = summary.gastos_fmt
 
     async def handle_upload(self, files: list[rx.UploadFile]):
-        """Lê o CSV enviado pelo usuário e salva as transações no banco."""
+        """Lê o arquivo enviado (CSV, XLSX, OFX ou PDF) e salva as transações no banco.
+
+        Formatos tabulares (CSV/XLSX/OFX) têm colunas fixas e um parser
+        determinístico. PDF de extrato não tem tabela fixa (varia por banco),
+        então o texto extraído é interpretado pelo mesmo agente extrator (LLM)
+        que já processa o texto do chat.
+        """
         self.is_uploading = True
 
         add_chat_message(role="user", content="📤 **Enviando arquivo** de transações...")
@@ -78,17 +89,65 @@ class AdvisorState(rx.State):
 
             file = files[0]
             raw_bytes = await file.read()
-            df = parse_transacoes_csv(raw_bytes)
+            extensao = Path(file.name).suffix.lower()
 
-            novas_transacoes = [
-                {"category": linha.descricao, "amount": linha.valor, "type": linha.tipo}
-                for linha in df.itertuples(index=False)
-            ]
-            add_transactions(novas_transacoes)
+            if extensao not in FORMATOS_SUPORTADOS:
+                add_chat_message(
+                    role="agent",
+                    content=(
+                        f"❌ Formato '{extensao}' não suportado. Envie um arquivo "
+                        "CSV, XLSX, OFX/QFX ou PDF."
+                    ),
+                )
+                self.on_load()
+                self.is_uploading = False
+                return
 
-            add_chat_message(
-                role="agent", content="✅ **Arquivo processado!** O gráfico já foi atualizado."
-            )
+            if extensao == ".pdf":
+                texto = extrair_texto_pdf(raw_bytes)
+                response, _ = run_with_fallback(
+                    get_data_extractor_agent, EXTRACTOR_LLM_PROVIDER, texto
+                )
+                if response is None:
+                    log_llm_call(
+                        "extractor",
+                        provider_fallback=EXTRACTOR_LLM_PROVIDER,
+                        success=False,
+                        error="agente extrator não respondeu ao processar o PDF",
+                    )
+                    raise RuntimeError("Nenhum provedor de IA disponível para ler o PDF.")
+
+                lista_extraida = response.content
+                schema_valido = hasattr(lista_extraida, "gastos")
+                log_llm_call("extractor", response=response, success=schema_valido)
+                novas_transacoes = (
+                    self._gastos_para_transacoes(lista_extraida.gastos) if schema_valido else []
+                )
+            else:
+                df = parse_extrato_tabular(file.name, raw_bytes)
+                novas_transacoes = [
+                    {
+                        "category": linha.descricao,
+                        "amount": abs(float(linha.valor)),
+                        "type": linha.tipo,
+                    }
+                    for linha in df.itertuples(index=False)
+                ]
+
+            if not novas_transacoes:
+                add_chat_message(
+                    role="agent",
+                    content="🤔 Não encontrei nenhuma transação reconhecível nesse arquivo.",
+                )
+            else:
+                add_transactions(novas_transacoes)
+                add_chat_message(
+                    role="agent",
+                    content=(
+                        f"✅ **Arquivo processado!** {len(novas_transacoes)} transação(ões) "
+                        "adicionada(s) — o painel já foi atualizado."
+                    ),
+                )
 
         except Exception as e:
             print("Erro no upload:", e)
@@ -99,6 +158,19 @@ class AdvisorState(rx.State):
 
         self.on_load()
         self.is_uploading = False
+
+    @staticmethod
+    def _gastos_para_transacoes(gastos: list) -> list[dict]:
+        """Converte a lista de `ItemGasto` (schema do agente extrator) para o
+        formato aceito por `add_transactions` ({"category", "amount", "type"})."""
+        return [
+            {
+                "category": item.category,
+                "amount": abs(float(item.amount)),
+                "type": item.type,
+            }
+            for item in gastos
+        ]
 
     def extract_transactions_from_text(self, text: str):
         """Passo 1 da orquestração: roda o agente extrator para 'pescar' gastos do chat."""
@@ -120,14 +192,7 @@ class AdvisorState(rx.State):
             schema_valido = hasattr(lista_extraida, "gastos")
 
             if schema_valido and lista_extraida.gastos:
-                novas_transacoes = [
-                    {
-                        "category": item.category,
-                        "amount": abs(float(item.amount)),
-                        "type": item.type,
-                    }
-                    for item in lista_extraida.gastos
-                ]
+                novas_transacoes = self._gastos_para_transacoes(lista_extraida.gastos)
                 add_transactions(novas_transacoes)
                 self.on_load()  # Atualiza o dashboard e o resumo do banco
 
