@@ -13,7 +13,12 @@ def message_bubble(message: dict) -> rx.Component:
     """Um balão de mensagem do chat, estilizado conforme o remetente (user/agente)."""
     is_user = message["role"] == "user"
     return rx.box(
-        rx.markdown(message["content"], font_size="0.95em"),
+        rx.markdown(
+            message["content"],
+            use_math=False,
+            use_katex=False,
+            font_size="0.95em",
+        ),
         background_color=rx.cond(is_user, "limegreen", "var(--gray-3)"),
         color=rx.cond(is_user, "white", "var(--gray-12)"),
         padding_left="1em",
@@ -32,25 +37,114 @@ def message_bubble(message: dict) -> rx.Component:
     )
 
 
+def _saldo_card() -> rx.Component:
+    """Card de destaque com o saldo consolidado — primeira coisa que o olho vê no painel."""
+    cor_saldo = rx.cond(AdvisorState.saldo_atual >= 0, "#10b981", "#ef4444")
+    return rx.vstack(
+        rx.text("SALDO ATUAL", size="1", weight="bold", color="gray", letter_spacing="0.05em"),
+        rx.heading(AdvisorState.saldo_fmt, size="8", color=cor_saldo),
+        rx.hstack(
+            rx.hstack(
+                rx.icon("trending-up", size=16, color="#10b981"),
+                rx.vstack(
+                    rx.text("Recebido", size="1", color="gray"),
+                    rx.text(AdvisorState.receitas_fmt, size="3", weight="bold"),
+                    spacing="0",
+                    align_items="start",
+                ),
+                spacing="2",
+                align_items="center",
+            ),
+            rx.hstack(
+                rx.icon("trending-down", size=16, color="#ef4444"),
+                rx.vstack(
+                    rx.text("Gasto", size="1", color="gray"),
+                    rx.text(AdvisorState.gastos_fmt, size="3", weight="bold"),
+                    spacing="0",
+                    align_items="start",
+                ),
+                spacing="2",
+                align_items="center",
+            ),
+            spacing="6",
+            padding_top="0.5em",
+        ),
+        spacing="1",
+        align_items="start",
+        width="100%",
+    )
+
+
+def _categoria_row(item: dict) -> rx.Component:
+    """Uma linha da lista de categorias abaixo do gráfico: bolinha colorida + nome + valor."""
+    return rx.hstack(
+        rx.box(width="10px", height="10px", border_radius="50%", background_color=item["fill"]),
+        rx.text(item["name"], size="2"),
+        rx.spacer(),
+        rx.text(item["value_fmt"], size="2", weight="bold"),
+        width="100%",
+        align_items="center",
+    )
+
+
+def _dashboard_vazio() -> rx.Component:
+    """Estado vazio: nenhuma transação ainda — orienta a usuária a começar pelo chat."""
+    return rx.vstack(
+        rx.icon("sparkles", size=32, color="gray"),
+        rx.text(
+            "Nenhuma transação ainda.",
+            weight="bold",
+            color="gray",
+        ),
+        rx.text(
+            "Conte pra vivIA no chat um gasto ou um recebimento — ex.: "
+            '"gastei 50 reais no mercado" — e o painel aparece aqui.',
+            size="2",
+            color="gray",
+            text_align="center",
+        ),
+        spacing="2",
+        align_items="center",
+        justify="center",
+        padding_y="3em",
+        width="100%",
+    )
+
+
 def dashboard_panel() -> rx.Component:
-    """Painel esquerdo: gráfico de pizza com a distribuição de gastos."""
+    """Painel esquerdo: saldo consolidado, resumo e distribuição de gastos por categoria."""
     return rx.vstack(
         rx.heading("📊 Visão Geral", size="5"),
-        rx.text("Distribuição de Gastos", color="gray"),
-        rx.recharts.pie_chart(
-            rx.recharts.pie(
-                data=AdvisorState.chart_data,
-                data_key="value",
-                name_key="name",
-                cx="50%",
-                cy="50%",
-                outer_radius=100,
-                fill="#8884d8",
-                label=True,
+        rx.cond(
+            AdvisorState.chart_data.length() > 0,
+            rx.vstack(
+                _saldo_card(),
+                rx.divider(margin_y="1em"),
+                rx.recharts.pie_chart(
+                    rx.recharts.pie(
+                        data=AdvisorState.chart_data,
+                        data_key="value",
+                        name_key="name",
+                        cx="50%",
+                        cy="50%",
+                        outer_radius=90,
+                        fill="#8884d8",
+                        label=True,
+                    ),
+                    rx.recharts.tooltip(),
+                    height=220,
+                    width="100%",
+                ),
+                rx.vstack(
+                    rx.foreach(AdvisorState.category_list, _categoria_row),
+                    spacing="2",
+                    width="100%",
+                    padding_top="0.5em",
+                ),
+                width="100%",
+                spacing="2",
             ),
-            rx.recharts.tooltip(),
-            height=300,
-            width="100%",
+            _dashboard_vazio(),
         ),
         width="105%",
         padding="1.5em",

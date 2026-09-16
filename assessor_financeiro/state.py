@@ -4,6 +4,8 @@ Conecta a UI ao banco de dados e aos agentes de IA. Não contém nenhum
 componente visual nem acesso direto ao banco — ambos ficam em `ui/` e
 `core/transaction_repository.py`, respectivamente.
 """
+from typing import Any
+
 import reflex as rx
 
 from assessor_financeiro.core.transaction_repository import (
@@ -15,8 +17,11 @@ from assessor_financeiro.core.transaction_repository import (
 )
 from assessor_financeiro.core.transaction_service import summarize_transactions
 from assessor_financeiro.core.csv_import_service import parse_transacoes_csv
+from assessor_financeiro.core.telemetry import log_llm_call
 from assessor_financeiro.agents.advisor_agent import get_financial_advisor
 from assessor_financeiro.agents.extractor_agent import get_data_extractor_agent
+from assessor_financeiro.config import EXTRACTOR_LLM_PROVIDER, ADVISOR_LLM_PROVIDER
+from assessor_financeiro.llm.fallback import run_with_fallback
 
 MENSAGEM_BOAS_VINDAS = (
     "Olá! 👋 Sou a vivIA, sua Assessora Financeira Pessoal. "
@@ -26,8 +31,14 @@ MENSAGEM_BOAS_VINDAS = (
 
 class AdvisorState(rx.State):
     chat_history: list[dict[str, str]] = []
-    chart_data: list[dict[str, any]] = []
+    chart_data: list[dict[str, Any]] = []
+    category_list: list[dict[str, Any]] = []
     database_summary: str = ""
+
+    saldo_atual: float = 0.0
+    saldo_fmt: str = "R$ 0,00"
+    receitas_fmt: str = "R$ 0,00"
+    gastos_fmt: str = "R$ 0,00"
 
     is_loading: bool = False
     is_uploading: bool = False
@@ -44,7 +55,12 @@ class AdvisorState(rx.State):
         transactions = get_transactions()
         summary = summarize_transactions(transactions)
         self.chart_data = summary.chart_data
+        self.category_list = summary.category_list_fmt
         self.database_summary = summary.as_text
+        self.saldo_atual = summary.saldo_atual
+        self.saldo_fmt = summary.saldo_fmt
+        self.receitas_fmt = summary.receitas_fmt
+        self.gastos_fmt = summary.gastos_fmt
 
     async def handle_upload(self, files: list[rx.UploadFile]):
         """Lê o CSV enviado pelo usuário e salva as transações no banco."""
@@ -86,14 +102,24 @@ class AdvisorState(rx.State):
 
     def extract_transactions_from_text(self, text: str):
         """Passo 1 da orquestração: roda o agente extrator para 'pescar' gastos do chat."""
-        extractor = get_data_extractor_agent()
-        response = extractor.run(text)
+        response, _ = run_with_fallback(get_data_extractor_agent, EXTRACTOR_LLM_PROVIDER, text)
+
+        if response is None:
+            log_llm_call(
+                "extractor",
+                provider_fallback=EXTRACTOR_LLM_PROVIDER,
+                success=False,
+                error="agente extrator não respondeu (principal e fallback falharam)",
+            )
+            print("Erro ao chamar o agente extrator (principal e fallback falharam)")
+            return
 
         try:
             # Com output_schema, response.content já é a instância de ListaGastos (Pydantic)
             lista_extraida = response.content
+            schema_valido = hasattr(lista_extraida, "gastos")
 
-            if hasattr(lista_extraida, "gastos") and lista_extraida.gastos:
+            if schema_valido and lista_extraida.gastos:
                 novas_transacoes = [
                     {
                         "category": item.category,
@@ -105,7 +131,12 @@ class AdvisorState(rx.State):
                 add_transactions(novas_transacoes)
                 self.on_load()  # Atualiza o dashboard e o resumo do banco
 
+            # Uma lista vazia também é um resultado válido (mensagem sem
+            # transação nova) — só conta como falha se o schema veio quebrado.
+            log_llm_call("extractor", response=response, success=schema_valido)
+
         except Exception as e:
+            log_llm_call("extractor", response=response, success=False, error=str(e))
             print(f"Erro ao extrair e salvar transações estruturadas: {e}")
 
     def submit_message(self, form_data: dict):
@@ -129,11 +160,25 @@ class AdvisorState(rx.State):
         try:
             self.extract_transactions_from_text(user_query)
 
-            agent = get_financial_advisor(
-                financial_data=self.database_summary,
-                chat_history=historico_formatado,
+            response, _ = run_with_fallback(
+                lambda provider: get_financial_advisor(
+                    financial_data=self.database_summary,
+                    chat_history=historico_formatado,
+                    provider=provider,
+                ),
+                ADVISOR_LLM_PROVIDER,
+                user_query,
             )
-            response = agent.run(user_query)
+            if response is None:
+                log_llm_call(
+                    "advisor",
+                    provider_fallback=ADVISOR_LLM_PROVIDER,
+                    success=False,
+                    error="agente conselheiro não respondeu (principal e fallback falharam)",
+                )
+                raise RuntimeError("Nenhum provedor de IA disponível no momento.")
+
+            log_llm_call("advisor", response=response)
             resposta_limpa = self._sanitize_markdown(response.content)
 
             self.chat_history.append({"role": "agent", "content": resposta_limpa})
@@ -148,14 +193,15 @@ class AdvisorState(rx.State):
 
     @staticmethod
     def _sanitize_markdown(texto: str) -> str:
-        """Neutraliza símbolos que poderiam ser interpretados como LaTeX/matemática.
+        """Remove delimitadores de LaTeX que o modelo às vezes inclui na resposta.
 
-        Remove delimitadores LaTeX e escapa o cifrão como entidade HTML, para
-        que o Reflex renderize "$" sem tentar ativar renderização matemática.
+        A renderização de matemática (KaTeX) foi desligada no componente
+        `rx.markdown` (ui/components.py), então o "$" não precisa mais de
+        escape aqui — só limpamos os delimitadores \\(...\\) e \\[...\\].
         """
         for delimitador in ["\\(", "\\)", "\\[", "\\]"]:
             texto = texto.replace(delimitador, "")
-        return texto.replace("$", "&#36;")
+        return texto
 
     def clear_chat(self):
         """Apaga o histórico do chat e as transações do banco de dados."""

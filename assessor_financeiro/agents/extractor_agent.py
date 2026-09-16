@@ -1,6 +1,7 @@
 """Agente extrator: um 'pipeline ETL' de linguagem natural para dados estruturados."""
 from agno.agent import Agent
 
+from assessor_financeiro.config import EXTRACTOR_LLM_PROVIDER
 from assessor_financeiro.llm.model_factory import get_llm_model
 from assessor_financeiro.agents.schemas import ListaGastos
 
@@ -38,10 +39,20 @@ Usuário: "Quais as dicas para economizar?"
 """
 
 
-def get_data_extractor_agent() -> Agent:
-    """Agente invisível que roda antes do conselheiro, só para 'pescar' transações no texto."""
+def get_data_extractor_agent(provider: str | None = None) -> Agent:
+    """Agente invisível que roda antes do conselheiro, só para 'pescar' transações no texto.
+
+    Usa um modelo focado em velocidade/parsing (Groq por padrão) — a tarefa é
+    puramente extrativa, não exige raciocínio profundo, e roda em toda
+    mensagem enviada, então latência baixa importa mais aqui.
+
+    Args:
+        provider: sobrescreve `EXTRACTOR_LLM_PROVIDER` (usado pelo mecanismo
+            de fallback em `llm/fallback.py` para tentar um provedor
+            secundário sem precisar mudar a configuração global).
+    """
     return Agent(
-        model=get_llm_model(),
+        model=get_llm_model(provider_override=provider or EXTRACTOR_LLM_PROVIDER),
         instructions=EXTRACTOR_INSTRUCTIONS,
         output_schema=ListaGastos,  # Habilita o parse estrito via Pydantic nativo do AGNO
     )

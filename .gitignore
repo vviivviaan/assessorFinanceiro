@@ -6,3 +6,6 @@ assets/external/
 .web
 .env
 .venv
+venv/
+reflex.lock/
+logs/

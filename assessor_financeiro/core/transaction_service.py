@@ -13,12 +13,23 @@ CREDITO_ALIASES = {"credito", "crédito"}
 DEBITO_ALIASES = {"debito", "débito"}
 
 
+def formatar_reais(valor: float) -> str:
+    """Formata um número como moeda brasileira: 1234.5 -> "R$ 1.234,50"."""
+    texto = f"{valor:,.2f}"  # ex.: "1,234.50" (formato US)
+    texto = texto.replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"R$ {texto}"
+
+
 @dataclass
 class FinancialSummary:
     total_receitas: float = 0.0
     total_gastos: float = 0.0
     saldo_atual: float = 0.0
     category_totals: dict[str, float] = field(default_factory=dict)
+
+    def _categorias_ordenadas(self) -> list[tuple[str, float]]:
+        """Categorias por valor decrescente — destaca as super-categorias primeiro."""
+        return sorted(self.category_totals.items(), key=lambda item: item[1], reverse=True)
 
     @property
     def chart_data(self) -> list[dict]:
@@ -29,8 +40,28 @@ class FinancialSummary:
                 "value": float(round(valor, 2)),
                 "fill": PALETA_FINANCEIRA[i % len(PALETA_FINANCEIRA)],
             }
-            for i, (categoria, valor) in enumerate(self.category_totals.items())
+            for i, (categoria, valor) in enumerate(self._categorias_ordenadas())
         ]
+
+    @property
+    def category_list_fmt(self) -> list[dict]:
+        """Mesma ordem/cores do `chart_data`, mas com o valor já formatado em R$ para exibir em texto."""
+        return [
+            {**item, "value_fmt": formatar_reais(item["value"])}
+            for item in self.chart_data
+        ]
+
+    @property
+    def saldo_fmt(self) -> str:
+        return formatar_reais(self.saldo_atual)
+
+    @property
+    def receitas_fmt(self) -> str:
+        return formatar_reais(self.total_receitas)
+
+    @property
+    def gastos_fmt(self) -> str:
+        return formatar_reais(self.total_gastos)
 
     @property
     def as_text(self) -> str:
