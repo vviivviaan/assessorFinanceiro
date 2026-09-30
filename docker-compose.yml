@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persiste o reflex.db (SQLite) fora do container, sobrevive a rebuilds.
+      - vivia_data:/app/data
+
+volumes:
+  vivia_data:

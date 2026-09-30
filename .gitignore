@@ -1,0 +1,14 @@
+.states
+*.py[cod]
+__pycache__/
+assets/external/
+*.db
+.web
+.env
+venv/
+reflex.lock/
+logs/
+
+# adicionado na revisao do checklist (30/09)
+*.log
+.claude/
