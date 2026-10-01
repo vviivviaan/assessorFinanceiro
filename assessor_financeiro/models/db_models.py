@@ -26,3 +26,16 @@ class Transaction(rx.Model, table=True):
     type: str
     session_id: str = "default_user"
     created_at: Optional[datetime.datetime] = Field(default_factory=datetime.datetime.now)
+
+
+class Cliente(rx.Model, table=True):
+    """Um cliente do modo 'Assessor Financeiro' (multiempresa/multicliente —
+    Fase 7). Cada cliente tem seu próprio `session_id` só dele: é esse
+    session_id que entra nos filtros de `ChatMessage`/`Transaction`, então
+    o resto do app (chat, transações, relatórios) não precisa saber que
+    está olhando pra um cliente em vez do modo pessoal — já funciona do
+    jeito que já funciona hoje, só trocando qual session_id está "ativo"."""
+
+    nome: str
+    session_id: str
+    criado_em: Optional[datetime.datetime] = Field(default_factory=datetime.datetime.now)

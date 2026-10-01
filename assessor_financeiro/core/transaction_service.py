@@ -5,8 +5,10 @@ transações e devolve os cálculos prontos. Isso o torna fácil de testar
 isoladamente (ex.: `pytest`) sem precisar subir o app inteiro.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TypedDict
+
+import pandas as pd
 
 from assessor_financeiro.config import PALETA_FINANCEIRA
 from assessor_financeiro.models.db_models import Transaction
@@ -57,6 +59,39 @@ class RelatorioMensal(TypedDict):
     mes: str
     Entradas: float
     Saidas: float
+
+
+def parse_data_flexivel(valor) -> "datetime | None":
+    """Converte valores de data heterogêneos (string em formatos variados,
+    `datetime.date`, `datetime.datetime`, `Timestamp` do pandas, ou
+    vazio/NaN/None) num único `datetime`. Usado por todo caminho de
+    importação de transação — chat (agente extrator), upload de arquivo
+    (CSV/XLSX/OFX) e Open Finance — pra que a data real da transação vire
+    `created_at` de forma padronizada, em vez de cada formato tratar isso
+    (ou simplesmente descartar a data) de um jeito diferente.
+
+    Retorna None se não der pra interpretar nada — quem chama decide o que
+    fazer (normalmente: deixar o banco usar o padrão dele, a data/hora atual,
+    em vez de travar a importação inteira por causa de uma data ruim).
+    """
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor
+    if isinstance(valor, date):
+        return datetime.combine(valor, datetime.min.time())
+
+    texto = str(valor).strip()
+    if not texto or texto.lower() in ("nat", "none", "nan", ""):
+        return None
+
+    try:
+        convertido = pd.to_datetime(texto, dayfirst=True, errors="coerce")
+    except (ValueError, TypeError):
+        return None
+    if convertido is None or pd.isna(convertido):
+        return None
+    return convertido.to_pydatetime()
 
 
 def formatar_reais(valor: float) -> str:

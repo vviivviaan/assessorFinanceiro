@@ -8,7 +8,7 @@ continuam intactos.
 import reflex as rx
 
 from assessor_financeiro.config import DEFAULT_SESSION_ID
-from assessor_financeiro.models.db_models import ChatMessage, Transaction
+from assessor_financeiro.models.db_models import ChatMessage, Cliente, Transaction
 
 
 def get_chat_history(session_id: str = DEFAULT_SESSION_ID) -> list[ChatMessage]:
@@ -52,3 +52,22 @@ def clear_session_data(session_id: str = DEFAULT_SESSION_ID) -> None:
         db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
         db.query(Transaction).filter(Transaction.session_id == session_id).delete()
         db.commit()
+
+
+def list_clientes() -> list[Cliente]:
+    """Lista os clientes cadastrados no modo 'Assessor Financeiro'
+    (multiempresa/multicliente — Fase 7), mais recente primeiro."""
+    with rx.session() as db:
+        return db.query(Cliente).order_by(Cliente.criado_em.desc()).all()
+
+
+def create_cliente(nome: str, session_id: str) -> Cliente:
+    """Cadastra um novo cliente com um `session_id` próprio — é esse
+    session_id que passa a isolar o chat/transações desse cliente de todos
+    os outros (e do modo pessoal)."""
+    with rx.session() as db:
+        cliente = Cliente(nome=nome, session_id=session_id)
+        db.add(cliente)
+        db.commit()
+        db.refresh(cliente)
+        return cliente

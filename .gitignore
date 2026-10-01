@@ -12,3 +12,7 @@ logs/
 # adicionado na revisao do checklist (30/09)
 *.log
 .claude/
+
+# backups locais (feitos antes de cada edição/migração arriscada)
+*.bak-*
+reflex.db.*

@@ -15,6 +15,10 @@ load_dotenv()
 # (por exemplo, gerando um session_id por login).
 DEFAULT_SESSION_ID = "default_user"
 
+# --- Modo de uso (Fase 7 — Pessoal x Assessor Financeiro multiempresa) ---
+MODO_PESSOAL = "pessoal"
+MODO_MULTIEMPRESA = "multiempresa"
+
 # --- Provedor de LLM ---
 # Roteamento inteligente: cada agente usa o provedor mais adequado ao seu
 # trabalho por padrão (Groq é rápido/barato, ideal para o parsing do
@@ -67,13 +71,30 @@ validate_llm_api_keys()
 # Paleta usada para colorir as fatias do gráfico de pizza, na ordem em que as
 # categorias aparecem.
 PALETA_FINANCEIRA = [
+    "#142a5c",  # Navy (categoria principal — mesma cor do header)
     "#3b82f6",  # Azul Royal
-    "#10b981",  # Verde Esmeralda (Principal)
-    "#ef4444",  # Vermelho Alerta
-    "#f97316",  # Laranja Vívido
     "#14b8a6",  # Teal
     "#8b5cf6",  # Roxo Violeta
-    "#f59e0b",  # Âmbar
+    "#eab308",  # Âmbar
+    "#9ca3af",  # Cinza (Outros)
+    "#ef4444",  # Vermelho Alerta
+    "#f97316",  # Laranja Vívido
     "#06b6d4",  # Ciano
-    "#a855f7",  # Púrpura
 ]
+
+# --- Tokens visuais (Fase 7 — Redesign + responsivo) ---
+# Paleta/medidas inspiradas no mockup de referência (header navy, cards
+# brancos arredondados, chips/pills). Um único lugar pra trocar o "tema"
+# inteiro do app sem caçar cor espalhada pelos componentes.
+COR_NAVY = "#142a5c"
+COR_NAVY_ESCURO = "#0e1f47"
+COR_NAVY_SUAVE = "#e8ecf7"  # fundo do chip/indicador ativo sobre branco
+COR_FUNDO_APP = "#f2f4fa"
+COR_VERDE = "#16a34a"
+COR_VERDE_BG = "#e3f8ea"
+COR_VERMELHO = "#e0483a"
+COR_VERMELHO_BG = "#fdeceb"
+COR_ALERTA = "#c2650b"
+COR_ALERTA_BG = "#fdecd3"
+RAIO_CARD = "20px"
+SOMBRA_CARD = "0 4px 16px rgba(15, 32, 72, 0.08)"
