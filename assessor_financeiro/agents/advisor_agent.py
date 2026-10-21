@@ -40,7 +40,10 @@ def _build_instructions(financial_data: str, chat_history: str) -> str:
 
 
 def get_financial_advisor(
-    financial_data: str, chat_history: str = "", provider: str | None = None
+    financial_data: str,
+    chat_history: str = "",
+    provider: str | None = None,
+    api_keys: dict[str, str] | None = None,
 ) -> Agent:
     """Monta o agente conselheiro já injetado com o resumo financeiro e o histórico atuais.
 
@@ -54,7 +57,9 @@ def get_financial_advisor(
             sem precisar mudar a configuração global).
     """
     return Agent(
-        model=get_llm_model(provider_override=provider or ADVISOR_LLM_PROVIDER),
+        model=get_llm_model(
+            provider_override=provider or ADVISOR_LLM_PROVIDER, api_keys=api_keys
+        ),
         instructions=_build_instructions(financial_data, chat_history),
         markdown=True,
         tools=[YFinanceTools()],

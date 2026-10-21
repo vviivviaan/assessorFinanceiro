@@ -1,0 +1,28 @@
+data,descricao,valor,tipo
+01/09/2026,Salário setembro,3200.00,Credito
+02/09/2026,Aluguel,-1100.00,Debito
+03/09/2026,Supermercado Extrabom,-286.45,Debito
+04/09/2026,Uber *TRIP,-23.90,Debito
+05/09/2026,Netflix,-55.90,Debito
+06/09/2026,Padaria Pão Quente,-18.50,Debito
+08/09/2026,Drogaria Raia,-64.30,Debito
+10/09/2026,Posto Ipiranga,-180.00,Debito
+11/09/2026,Pix recebido - Maria,150.00,Credito
+12/09/2026,Mensalidade Smart Fit,-99.90,Debito
+14/09/2026,Restaurante Sabor da Terra,-72.00,Debito
+15/09/2026,Conta de energia EDP,-142.80,Debito
+17/09/2026,Spotify,-21.90,Debito
+19/09/2026,Mercado Livre,-134.90,Debito
+20/09/2026,Curso Alura,-89.00,Debito
+22/09/2026,Cinema,-48.00,Debito
+25/09/2026,Tarifa bancária,-29.90,Debito
+27/09/2026,Borracharia do Zé,-60.00,Debito
+01/10/2026,Salário outubro,3200.00,Credito
+02/10/2026,Aluguel,-1100.00,Debito
+04/10/2026,Supermercado Extrabom,-241.18,Debito
+06/10/2026,Netflix,-55.90,Debito
+08/10/2026,Uber *TRIP,-31.40,Debito
+09/10/2026,Padaria Pão Quente,-22.00,Debito
+12/10/2026,Pix enviado - João,-80.00,Debito
+15/10/2026,Conta de energia EDP,-151.20,Debito
+18/10/2026,Drogaria Raia,-37.60,Debito

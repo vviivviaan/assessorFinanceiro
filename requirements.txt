@@ -13,3 +13,10 @@ pypdf==5.1.0
 python-dotenv==1.2.2
 reflex[db]==0.9.6.post1
 yfinance==0.2.65
+
+# testes
+pytest
+# fixado na versão do venv local (>=0.0.43 rejeita datetime sem fuso nos models)
+sqlmodel==0.0.42
+# criptografia das chaves de API dos usuários
+cryptography

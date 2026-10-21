@@ -14,3 +14,4 @@ reflex.db
 .env
 .mcp.json
 reflex_run*.log
+.vivia_secret_key

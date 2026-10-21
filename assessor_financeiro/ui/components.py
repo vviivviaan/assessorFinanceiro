@@ -226,9 +226,27 @@ def app_header() -> rx.Component:
             _hover={"background_color": "rgba(255,255,255,0.14)"},
         ),
         rx.button(
+            rx.icon("key-round", size=16),
+            rx.text("Configurações", display=["none", "none", "block"]),
+            on_click=AdvisorState.abrir_config,
+            variant="ghost",
+            size="2",
+            style={"color": "rgba(255,255,255,0.85)"},
+            _hover={"background_color": "rgba(255,255,255,0.14)"},
+        ),
+        rx.button(
             rx.icon("trash-2", size=16),
             rx.text("Zerar Dados", display=["none", "none", "block"]),
             on_click=AdvisorState.clear_chat,
+            variant="ghost",
+            size="2",
+            style={"color": "rgba(255,255,255,0.85)"},
+            _hover={"background_color": "rgba(255,255,255,0.14)"},
+        ),
+        rx.button(
+            rx.icon("log-out", size=16),
+            rx.text("Sair", display=["none", "none", "block"]),
+            on_click=AdvisorState.sair,
             variant="ghost",
             size="2",
             style={"color": "rgba(255,255,255,0.85)"},
@@ -515,6 +533,17 @@ def chat_loading_indicator() -> rx.Component:
     )
 
 
+def origem_importacao_seletor() -> rx.Component:
+    """Escolha do que o próximo arquivo é: extrato da conta ou fatura do cartão."""
+    return rx.segmented_control.root(
+        rx.segmented_control.item("Extrato", value="extrato"),
+        rx.segmented_control.item("Fatura de cartão", value="fatura"),
+        value=AdvisorState.origem_importacao,
+        on_change=AdvisorState.set_origem_importacao,
+        size="1",
+    )
+
+
 def upload_button() -> rx.Component:
     """Botão de anexo/upload de extrato (CSV, XLSX, OFX/QFX ou PDF), com drag-and-drop."""
     return rx.upload(
@@ -588,36 +617,170 @@ def open_finance_button() -> rx.Component:
 def chat_input_form() -> rx.Component:
     """Formulário de envio de mensagem (permite usar Enter para enviar)."""
     return rx.form(
-        rx.hstack(
-            upload_button(),
-            open_finance_button(),
-            rx.input(
-                name="chat_input",  # Nome que o form_data vai capturar
-                placeholder="Ex: Gastei 150 no borracheiro...",
-                width="75%",
-                size="3",
+        rx.vstack(
+            rx.hstack(
+                rx.text("Anexar:", size="1", color="var(--gray-9)"),
+                origem_importacao_seletor(),
+                rx.text(
+                    "CSV, XLSX, OFX ou PDF",
+                    size="1",
+                    color="var(--gray-9)",
+                    display=["none", "none", "block"],
+                ),
+                spacing="2",
+                align_items="center",
             ),
-            rx.button(
-                rx.icon("send", size=22),
-                loading=AdvisorState.is_loading,
-                size="3",
-                variant="solid",
-                _hover={
-                    "cursor": "pointer",
-                    "opacity": 0.9,
-                    "transform": "scale(1.2)",
-                    "transition": "transform 0.1s ease",
-                },
-                type="submit",
-                width="10%",
-                background_color=COR_VERDE,
-                cursor="pointer",
+            rx.hstack(
+                upload_button(),
+                open_finance_button(),
+                rx.input(
+                    name="chat_input",  # Nome que o form_data vai capturar
+                    placeholder="Ex: Gastei 150 no borracheiro...",
+                    width="75%",
+                    size="3",
+                ),
+                rx.button(
+                    rx.icon("send", size=22),
+                    loading=AdvisorState.is_loading,
+                    size="3",
+                    variant="solid",
+                    _hover={
+                        "cursor": "pointer",
+                        "opacity": 0.9,
+                        "transform": "scale(1.2)",
+                        "transition": "transform 0.1s ease",
+                    },
+                    type="submit",
+                    width="10%",
+                    background_color=COR_VERDE,
+                    cursor="pointer",
+                ),
+                width="100%",
             ),
             width="100%",
+            spacing="2",
         ),
         on_submit=AdvisorState.submit_message,
         reset_on_submit=True,
         width="100%",
+        flex_shrink="0",
+    )
+
+
+def _conversa_row(conversa: dict) -> rx.Component:
+    """Uma linha da lista de conversas: clicar abre a conversa; a lixeira
+    (com confirmação) apaga só as mensagens dela."""
+    ativa = AdvisorState.conversa_ativa_id == conversa["conversa_id"]
+    return rx.hstack(
+        rx.hstack(
+            rx.icon("message-square", size=16, color=COR_NAVY),
+            rx.text(
+                conversa["titulo"],
+                size="2",
+                weight=rx.cond(ativa, "bold", "regular"),
+                color="#1a2540",
+                overflow="hidden",
+                text_overflow="ellipsis",
+                white_space="nowrap",
+            ),
+            spacing="2",
+            align_items="center",
+            flex="1",
+            min_width="0",
+            cursor="pointer",
+            on_click=AdvisorState.selecionar_conversa(conversa["conversa_id"]),
+        ),
+        rx.alert_dialog.root(
+            rx.alert_dialog.trigger(
+                rx.icon_button(
+                    rx.icon("trash-2", size=14),
+                    variant="ghost",
+                    size="1",
+                    color_scheme="red",
+                    aria_label="Excluir conversa",
+                )
+            ),
+            rx.alert_dialog.content(
+                rx.alert_dialog.title("Excluir conversa?"),
+                rx.alert_dialog.description(
+                    "As mensagens desta conversa serão apagadas. "
+                    "Suas transações e o painel não são afetados."
+                ),
+                rx.flex(
+                    rx.alert_dialog.cancel(rx.button("Cancelar", variant="soft", color_scheme="gray")),
+                    rx.alert_dialog.action(
+                        rx.button(
+                            "Excluir",
+                            color_scheme="red",
+                            on_click=AdvisorState.excluir_conversa(conversa["conversa_id"]),
+                        )
+                    ),
+                    spacing="3",
+                    justify="end",
+                    margin_top="1em",
+                ),
+            ),
+        ),
+        width="100%",
+        align_items="center",
+        padding="0.5em 0.75em",
+        border_radius="10px",
+        background_color=rx.cond(ativa, COR_NAVY_SUAVE, "transparent"),
+        _hover={"background_color": COR_NAVY_SUAVE},
+    )
+
+
+def conversas_barra() -> rx.Component:
+    """Faixa no topo do chat: título da conversa atual, botão "Nova conversa"
+    e botão que abre a lista das conversas antigas (Fase 5)."""
+    return rx.vstack(
+        rx.hstack(
+            rx.text(
+                AdvisorState.conversa_ativa_titulo,
+                size="2",
+                weight="bold",
+                color="#1a2540",
+                overflow="hidden",
+                text_overflow="ellipsis",
+                white_space="nowrap",
+                flex="1",
+                min_width="0",
+            ),
+            rx.button(
+                rx.icon("history", size=16),
+                rx.text("Conversas", display=["none", "none", "block"]),
+                on_click=AdvisorState.alternar_conversas,
+                variant="soft",
+                size="2",
+            ),
+            rx.button(
+                rx.icon("plus", size=16),
+                rx.text("Nova conversa", display=["none", "none", "block"]),
+                on_click=AdvisorState.nova_conversa,
+                disabled=AdvisorState.is_loading | AdvisorState.is_uploading,
+                size="2",
+            ),
+            width="100%",
+            spacing="2",
+            align_items="center",
+        ),
+        rx.cond(
+            AdvisorState.mostrar_conversas,
+            rx.vstack(
+                rx.foreach(AdvisorState.conversas, _conversa_row),
+                width="100%",
+                spacing="1",
+                max_height="220px",
+                overflow_y="auto",
+                padding="0.4em",
+                background_color="white",
+                border="1px solid #e7e9f5",
+                border_radius="14px",
+            ),
+            rx.fragment(),
+        ),
+        width="100%",
+        spacing="2",
         flex_shrink="0",
     )
 
@@ -627,6 +790,7 @@ def chat_panel() -> rx.Component:
     (logo/badge/zerar dados) agora é único e fica em `app_header()`, acima
     de todas as abas (Fase 7)."""
     return rx.vstack(
+        conversas_barra(),
         rx.auto_scroll(
             rx.vstack(
                 rx.foreach(AdvisorState.chat_history, message_bubble),
@@ -1201,4 +1365,180 @@ def clientes_panel() -> rx.Component:
         spacing="4",
         padding="2em 1.5em",
         align_items="stretch",
+    )
+
+
+# --- Login e configurações (Fase 5) ---
+
+
+def auth_screen() -> rx.Component:
+    """Tela de entrada: login ou criação de conta (e-mail + senha)."""
+    criando = AdvisorState.auth_modo == "criar"
+    return rx.form(
+        rx.vstack(
+            rx.box(
+                rx.text("💰", font_size="1.4em"),
+                width="52px",
+                height="52px",
+                border_radius="16px",
+                background_color=COR_NAVY,
+                display="flex",
+                align_items="center",
+                justify_content="center",
+            ),
+            rx.heading(
+                rx.cond(criando, "Criar sua conta", "Entrar na vivIA"),
+                size="6",
+                color="#1a2540",
+                text_align="center",
+            ),
+            rx.text(
+                rx.cond(
+                    criando,
+                    "Use um e-mail e uma senha de pelo menos 8 caracteres.",
+                    "Seus dados e suas chaves de API ficam ligados à sua conta.",
+                ),
+                size="2",
+                color="var(--gray-9)",
+                text_align="center",
+            ),
+            rx.input(
+                placeholder="E-mail",
+                type="email",
+                value=AdvisorState.auth_email,
+                on_change=AdvisorState.set_auth_email,
+                size="3",
+                width="100%",
+            ),
+            rx.input(
+                placeholder="Senha",
+                type="password",
+                value=AdvisorState.auth_senha,
+                on_change=AdvisorState.set_auth_senha,
+                size="3",
+                width="100%",
+            ),
+            rx.cond(
+                AdvisorState.auth_erro != "",
+                rx.text(AdvisorState.auth_erro, size="2", color=COR_VERMELHO),
+                rx.fragment(),
+            ),
+            rx.button(
+                rx.cond(criando, "Criar conta", "Entrar"),
+                type="submit",
+                size="3",
+                width="100%",
+            ),
+            rx.button(
+                rx.cond(
+                    criando,
+                    "Já tenho conta — entrar",
+                    "Ainda não tenho conta — criar",
+                ),
+                type="button",
+                on_click=AdvisorState.alternar_auth_modo,
+                variant="ghost",
+                size="2",
+            ),
+            spacing="3",
+            align_items="center",
+            width="100%",
+        ),
+        on_submit=lambda _dados: AdvisorState.enviar_auth(),
+        reset_on_submit=False,
+        width="100%",
+        max_width="400px",
+        padding="2em 1.5em",
+    )
+
+
+def _chave_row(item: dict) -> rx.Component:
+    """Uma linha da tela de Configurações: um provedor, com a chave
+    mascarada (se já cadastrada) e o campo pra colar uma nova."""
+    provedor = item["provedor"]
+    return rx.vstack(
+        rx.hstack(
+            rx.text(item["nome"], weight="bold", size="2", color="#1a2540"),
+            rx.spacer(),
+            rx.cond(
+                item["salva"] == "sim",
+                rx.hstack(
+                    rx.badge(item["mascara"], color_scheme="green"),
+                    rx.icon_button(
+                        rx.icon("trash-2", size=14),
+                        on_click=AdvisorState.remover_chave_provedor(provedor),
+                        variant="ghost",
+                        size="1",
+                        color_scheme="red",
+                        aria_label="Remover chave",
+                    ),
+                    spacing="2",
+                    align_items="center",
+                ),
+                rx.badge("não cadastrada", color_scheme="gray"),
+            ),
+            width="100%",
+            align_items="center",
+        ),
+        rx.hstack(
+            rx.input(
+                placeholder="Cole aqui a chave (substitui a atual)",
+                type="password",
+                on_change=lambda valor: AdvisorState.set_nova_chave(provedor, valor),
+                size="2",
+                flex="1",
+            ),
+            rx.button(
+                "Salvar",
+                on_click=AdvisorState.salvar_chave_provedor(provedor),
+                size="2",
+            ),
+            width="100%",
+            spacing="2",
+        ),
+        width="100%",
+        spacing="2",
+        padding="0.75em",
+        border="1px solid #e7e9f5",
+        border_radius="12px",
+    )
+
+
+def config_dialog() -> rx.Component:
+    """Janela de Configurações: conta e chaves de API do usuário logado."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Configurações"),
+            rx.dialog.description(
+                rx.text("Conta: ", AdvisorState.usuario_email, size="2"),
+            ),
+            rx.vstack(
+                rx.text(
+                    "Suas chaves de API (cada provedor é opcional, mas você "
+                    "precisa de pelo menos uma). Elas ficam criptografadas e "
+                    "só são usadas nas suas conversas.",
+                    size="2",
+                    color="var(--gray-9)",
+                ),
+                rx.foreach(AdvisorState.chaves_ui, _chave_row),
+                rx.cond(
+                    AdvisorState.config_msg != "",
+                    rx.text(AdvisorState.config_msg, size="2", color="var(--gray-11)"),
+                    rx.fragment(),
+                ),
+                spacing="3",
+                width="100%",
+                margin_top="1em",
+            ),
+            rx.flex(
+                rx.dialog.close(
+                    rx.button("Fechar", variant="soft", on_click=AdvisorState.fechar_config)
+                ),
+                justify="end",
+                margin_top="1em",
+            ),
+            max_width="520px",
+        ),
+        open=AdvisorState.mostrar_config,
+        on_open_change=AdvisorState.set_config_aberta,
     )

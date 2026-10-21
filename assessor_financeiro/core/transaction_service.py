@@ -85,8 +85,12 @@ def parse_data_flexivel(valor) -> "datetime | None":
     if not texto or texto.lower() in ("nat", "none", "nan", ""):
         return None
 
+    # Datas ISO (AAAA-MM-DD...) são inequívocas: com dayfirst=True o pandas
+    # trocava dia e mês (2026-08-12 virava 08/12). dayfirst só vale pro
+    # formato brasileiro (dd/mm/aaaa).
+    iso = len(texto) >= 10 and texto[4] == "-" and texto[:4].isdigit()
     try:
-        convertido = pd.to_datetime(texto, dayfirst=True, errors="coerce")
+        convertido = pd.to_datetime(texto, dayfirst=not iso, errors="coerce")
     except (ValueError, TypeError):
         return None
     if convertido is None or pd.isna(convertido):

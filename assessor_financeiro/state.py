@@ -13,14 +13,22 @@ from typing import Any
 
 import reflex as rx
 
+from assessor_financeiro.auth_state import AuthMixin
+from assessor_financeiro.core.auth_service import session_id_pessoal
+from assessor_financeiro.llm.model_factory import provedor_tem_chave
 from assessor_financeiro.core.transaction_repository import (
     add_chat_message,
     add_transactions,
     clear_session_data,
     create_cliente,
+    create_conversa,
+    delete_conversa,
     get_chat_history,
     get_transactions,
     list_clientes,
+    list_conversas,
+    rename_conversa,
+    TITULO_PADRAO_CONVERSA,
 )
 from assessor_financeiro.core.transaction_service import (
     summarize_transactions,
@@ -36,10 +44,14 @@ from assessor_financeiro.core.transaction_service import (
     OpcaoMes,
     RelatorioMensal,
 )
+from assessor_financeiro.core.categorizacao import categoria_ou_descricao
 from assessor_financeiro.core.file_import_service import (
     FORMATOS_SUPORTADOS,
+    ORIGEM_EXTRATO,
+    ORIGEM_FATURA,
+    ErroImportacao,
     extrair_texto_pdf,
-    parse_extrato_tabular,
+    parse_extrato_com_resumo,
 )
 from assessor_financeiro.core.telemetry import log_llm_call
 from assessor_financeiro.core.open_finance.mock_client import (
@@ -65,7 +77,13 @@ MENSAGEM_BOAS_VINDAS = (
 )
 
 
-class AdvisorState(rx.State):
+MENSAGEM_SEM_CHAVE = (
+    "🔑 Para conversar comigo, cadastre sua chave de API (Groq, OpenAI ou "
+    "Google) em **Configurações** — o ícone de chave no topo da tela."
+)
+
+
+class AdvisorState(AuthMixin, rx.State):
     chat_history: list[dict[str, str]] = []
     chart_data: list[dict[str, Any]] = []
     category_list: list[dict[str, Any]] = []
@@ -84,6 +102,15 @@ class AdvisorState(rx.State):
     cliente_ativo_nome: str = ""
     clientes: list[dict[str, str]] = []
     novo_cliente_nome: str = ""
+
+    # --- Conversas do chat (Fase 5) ---
+    # Cada perfil (Pessoal ou cliente) tem várias conversas; as transações
+    # são do perfil e valem para todas, só o histórico do chat muda.
+    # "" é um id válido: é a "Conversa inicial" (histórico anterior ao recurso).
+    conversa_ativa_id: str = ""
+    conversa_ativa_titulo: str = ""
+    conversas: list[dict[str, str]] = []
+    mostrar_conversas: bool = False
 
     saldo_atual: float = 0.0
     saldo_fmt: str = "R$ 0,00"
@@ -118,6 +145,14 @@ class AdvisorState(rx.State):
     is_loading: bool = False
     is_uploading: bool = False
 
+    # O que o arquivo enviado representa: "extrato" (conta) ou "fatura" (cartão).
+    origem_importacao: str = ORIGEM_EXTRATO
+
+    def set_origem_importacao(self, valor: str | list[str]):
+        if isinstance(valor, list):  # o segmented_control pode mandar lista
+            valor = valor[0] if valor else ORIGEM_EXTRATO
+        self.origem_importacao = valor if valor in (ORIGEM_EXTRATO, ORIGEM_FATURA) else ORIGEM_EXTRATO
+
     def on_load(self):
         """Chamado uma vez quando a página carrega. Não sabe ainda se é
         modo Pessoal ou Assessor Financeiro (isso só chega do navegador via
@@ -125,11 +160,38 @@ class AdvisorState(rx.State):
         multiempresa carrega a lista de clientes; sem modo nenhum escolhido
         ainda (primeira visita), não faz nada — `ui/pages.py` mostra a tela
         de onboarding nesse caso."""
+        if not self._restaurar_login():
+            return  # sem login: ui/pages.py mostra a tela de entrada
+        self._pos_login()
+
+    def _pos_login(self):
+        """Depois de entrar (ou de retomar o login): abre o que corresponde
+        ao modo salvo — Pessoal já com os dados; multiempresa com a lista
+        de clientes; sem modo ainda, a tela de onboarding."""
         if self.modo_app == MODO_PESSOAL:
-            self.session_id_ativo = DEFAULT_SESSION_ID
-            self._carregar_dados_sessao()
+            self.session_id_ativo = session_id_pessoal(self.usuario_id)
+            self._entrar_na_sessao()
         elif self.modo_app == MODO_MULTIEMPRESA:
             self.carregar_clientes()
+
+    def _limpar_dados_em_memoria(self):
+        """Ao sair: não deixa chat/valores da usuária anterior no estado."""
+        self.session_id_ativo = ""
+        self.cliente_ativo_nome = ""
+        self.clientes = []
+        self.chat_history = []
+        self.chart_data = []
+        self.category_list = []
+        self.database_summary = ""
+        self.transacoes_todas = []
+        self.ultimas_transacoes = []
+        self.transacoes_agrupadas = []
+        self.meses_disponiveis = []
+        self.relatorio_mensal = []
+        self.insight_texto = ""
+        self.saldo_fmt = self.receitas_fmt = self.gastos_fmt = "R$ 0,00"
+        self.saldo_atual = self.total_receitas = self.total_gastos = 0.0
+        self._esquecer_conversas()
 
     def _carregar_dados_sessao(self):
         """Carrega e recalcula os dados do banco (chat + transações) para
@@ -171,10 +233,15 @@ class AdvisorState(rx.State):
     # duplicar nenhuma tela.
 
     def _get_chat_history(self):
-        return get_chat_history(self.session_id_ativo)
+        return get_chat_history(self.session_id_ativo, self.conversa_ativa_id)
 
     def _add_chat_message(self, role: str, content: str):
-        add_chat_message(role=role, content=content, session_id=self.session_id_ativo)
+        add_chat_message(
+            role=role,
+            content=content,
+            session_id=self.session_id_ativo,
+            conversa_id=self.conversa_ativa_id,
+        )
 
     def _get_transactions(self):
         return get_transactions(self.session_id_ativo)
@@ -192,8 +259,8 @@ class AdvisorState(rx.State):
         onboarding) e já carrega o que for preciso pra cada um."""
         self.modo_app = modo
         if modo == MODO_PESSOAL:
-            self.session_id_ativo = DEFAULT_SESSION_ID
-            self._carregar_dados_sessao()
+            self.session_id_ativo = session_id_pessoal(self.usuario_id)
+            self._entrar_na_sessao()
         else:
             self.session_id_ativo = ""
             self.carregar_clientes()
@@ -203,11 +270,12 @@ class AdvisorState(rx.State):
         self.modo_app = ""
         self.session_id_ativo = ""
         self.cliente_ativo_nome = ""
+        self._esquecer_conversas()
 
     def carregar_clientes(self):
         """Recarrega a lista de clientes cadastrados no modo multiempresa."""
         self.clientes = [
-            {"nome": c.nome, "session_id": c.session_id} for c in list_clientes()
+            {"nome": c.nome, "session_id": c.session_id} for c in list_clientes(self.usuario_id)
         ]
 
     def set_novo_cliente_nome(self, valor: str):
@@ -220,7 +288,9 @@ class AdvisorState(rx.State):
         if not nome:
             return
         novo_session_id = f"cliente_{uuid.uuid4().hex[:12]}"
-        cliente = create_cliente(nome=nome, session_id=novo_session_id)
+        cliente = create_cliente(
+            nome=nome, session_id=novo_session_id, usuario_id=self.usuario_id
+        )
         self.novo_cliente_nome = ""
         self.carregar_clientes()
         self.selecionar_cliente(cliente.session_id, cliente.nome)
@@ -230,13 +300,93 @@ class AdvisorState(rx.State):
         passam a ser só dele (mesmas telas do modo Pessoal, reaproveitadas)."""
         self.session_id_ativo = session_id
         self.cliente_ativo_nome = nome
-        self._carregar_dados_sessao()
+        self._entrar_na_sessao()
 
     def voltar_para_clientes(self):
         """Sai do cliente atual e volta pra lista, sem trocar de modo."""
         self.session_id_ativo = ""
         self.cliente_ativo_nome = ""
+        self._esquecer_conversas()
         self.carregar_clientes()
+
+    # --- Conversas (Fase 5) ---
+
+    def _esquecer_conversas(self):
+        self.conversa_ativa_id = ""
+        self.conversa_ativa_titulo = ""
+        self.conversas = []
+        self.mostrar_conversas = False
+
+    def _carregar_conversas(self):
+        """Atualiza a lista de conversas do perfil ativo e o título da ativa."""
+        self.conversas = [
+            {"conversa_id": c.conversa_id, "titulo": c.titulo}
+            for c in list_conversas(self.session_id_ativo)
+        ]
+        self.conversa_ativa_titulo = next(
+            (c["titulo"] for c in self.conversas if c["conversa_id"] == self.conversa_ativa_id),
+            "",
+        )
+
+    def _entrar_na_sessao(self):
+        """Ao entrar num perfil (Pessoal ou cliente): abre a conversa mais
+        recente e carrega os dados."""
+        self.conversa_ativa_id = ""
+        self.mostrar_conversas = False
+        self._carregar_conversas()
+        if self.conversas:
+            self.conversa_ativa_id = self.conversas[0]["conversa_id"]
+            self._carregar_conversas()
+        self._carregar_dados_sessao()
+
+    def alternar_conversas(self):
+        """Abre/fecha a lista de conversas no topo do chat."""
+        self.mostrar_conversas = not self.mostrar_conversas
+
+    def nova_conversa(self):
+        """Cria uma conversa em branco no perfil ativo e passa a usá-la."""
+        if self.is_loading or self.is_uploading:
+            return
+        nova = create_conversa(
+            self.session_id_ativo, conversa_id=uuid.uuid4().hex[:12]
+        )
+        self.conversa_ativa_id = nova.conversa_id
+        self.mostrar_conversas = False
+        self._carregar_conversas()
+        self._carregar_dados_sessao()
+
+    def selecionar_conversa(self, conversa_id: str):
+        """Abre uma conversa antiga."""
+        if self.is_loading or self.is_uploading:
+            return
+        self.conversa_ativa_id = conversa_id
+        self.mostrar_conversas = False
+        self._carregar_conversas()
+        self._carregar_dados_sessao()
+
+    def excluir_conversa(self, conversa_id: str):
+        """Apaga uma conversa (e só as mensagens dela — as transações ficam)."""
+        if self.is_loading or self.is_uploading:
+            return
+        delete_conversa(self.session_id_ativo, conversa_id)
+        if conversa_id == self.conversa_ativa_id:
+            self.conversa_ativa_id = ""
+            self._carregar_conversas()  # recria a inicial se não sobrou nenhuma
+            if self.conversas:
+                self.conversa_ativa_id = self.conversas[0]["conversa_id"]
+        self._carregar_conversas()
+        self._carregar_dados_sessao()
+
+    def _titular_conversa_se_nova(self, primeira_mensagem: str):
+        """A conversa nasce como "Nova conversa"; na primeira mensagem da
+        usuária ela ganha um título tirado dessa mensagem."""
+        if self.conversa_ativa_titulo != TITULO_PADRAO_CONVERSA:
+            return
+        titulo = " ".join(primeira_mensagem.split())
+        if len(titulo) > 40:
+            titulo = titulo[:40].rstrip() + "…"
+        rename_conversa(self.session_id_ativo, self.conversa_ativa_id, titulo)
+        self._carregar_conversas()
 
     def set_filtro_tipo(self, valor: str):
         """Muda o filtro de tipo (Todas/Entradas/Saidas) na aba de Transações."""
@@ -267,12 +417,15 @@ class AdvisorState(rx.State):
         """
         self.is_uploading = True
 
-        self._add_chat_message(role="user", content="📤 **Enviando arquivo** de transações...")
+        origem = self.origem_importacao
+        rotulo = "fatura do cartão" if origem == ORIGEM_FATURA else "extrato"
+        pagamentos_ignorados = 0
+        self._add_chat_message(role="user", content=f"📤 **Enviando {rotulo}**...")
         self._carregar_dados_sessao()
         yield
 
         try:
-            add_chat_message(
+            self._add_chat_message(
                 role="agent", content="⏳ **Processando** seu arquivo de transações..."
             )
             yield
@@ -282,7 +435,7 @@ class AdvisorState(rx.State):
             extensao = Path(file.name).suffix.lower()
 
             if extensao not in FORMATOS_SUPORTADOS:
-                add_chat_message(
+                self._add_chat_message(
                     role="agent",
                     content=(
                         f"❌ Formato '{extensao}' não suportado. Envie um arquivo "
@@ -295,8 +448,19 @@ class AdvisorState(rx.State):
 
             if extensao == ".pdf":
                 texto = extrair_texto_pdf(raw_bytes)
+                if origem == ORIGEM_FATURA:
+                    texto = (
+                        "ATENÇÃO: o texto abaixo é uma FATURA DE CARTÃO DE CRÉDITO. "
+                        "Cada compra é um gasto (type Debito) com a data da compra; "
+                        "estornos e créditos são type Credito; IGNORE linhas de "
+                        "pagamento da fatura, saldo anterior, limites e totais.\n\n"
+                        + texto
+                    )
+                chaves = self._chaves_decifradas()
                 response, _ = run_with_fallback(
-                    get_data_extractor_agent, EXTRACTOR_LLM_PROVIDER, texto
+                    lambda provider: get_data_extractor_agent(provider, api_keys=chaves),
+                    EXTRACTOR_LLM_PROVIDER,
+                    texto,
                 )
                 if response is None:
                     log_llm_call(
@@ -314,11 +478,13 @@ class AdvisorState(rx.State):
                     self._gastos_para_transacoes(lista_extraida.gastos) if schema_valido else []
                 )
             else:
-                df = parse_extrato_tabular(file.name, raw_bytes)
+                df, pagamentos_ignorados = parse_extrato_com_resumo(
+                    file.name, raw_bytes, origem
+                )
                 novas_transacoes = []
                 for linha in df.itertuples(index=False):
                     transacao = {
-                        "category": linha.descricao,
+                        "category": categoria_ou_descricao(linha.descricao),
                         "amount": abs(float(linha.valor)),
                         "type": linha.tipo,
                     }
@@ -328,29 +494,53 @@ class AdvisorState(rx.State):
                     novas_transacoes.append(transacao)
 
             if not novas_transacoes:
-                add_chat_message(
+                self._add_chat_message(
                     role="agent",
                     content="🤔 Não encontrei nenhuma transação reconhecível nesse arquivo.",
                 )
             else:
                 self._add_transactions(novas_transacoes)
-                add_chat_message(
+                self._add_chat_message(
                     role="agent",
-                    content=(
-                        f"✅ **Arquivo processado!** {len(novas_transacoes)} transação(ões) "
-                        "adicionada(s) — o painel já foi atualizado."
+                    content=self._resumo_importacao(
+                        rotulo, novas_transacoes, pagamentos_ignorados
                     ),
                 )
 
+        except ErroImportacao as e:
+            self._add_chat_message(role="agent", content=f"❌ {e}")
         except Exception as e:
             print("Erro no upload:", e)
-            add_chat_message(
+            self._add_chat_message(
                 role="agent",
                 content="❌ Ocorreu um erro ao tentar salvar os dados da sua planilha... Tente novamente.",
             )
 
         self._carregar_dados_sessao()
         self.is_uploading = False
+
+    @staticmethod
+    def _resumo_importacao(rotulo: str, transacoes: list[dict], pagamentos_ignorados: int) -> str:
+        """Texto de confirmação depois de importar um extrato/fatura: quantas
+        transações entraram e como ficaram distribuídas por categoria."""
+        contagem: dict[str, int] = {}
+        for t in transacoes:
+            contagem[t["category"]] = contagem.get(t["category"], 0) + 1
+        principais = sorted(contagem.items(), key=lambda item: item[1], reverse=True)[:5]
+        categorias = ", ".join(f"{nome} ({qtd})" for nome, qtd in principais)
+
+        texto = (
+            f"✅ **Importação concluída** ({rotulo})! {len(transacoes)} "
+            f"transação(ões) adicionada(s) — o painel já foi atualizado."
+        )
+        if categorias:
+            texto += f"\n\nCategorias: {categorias}."
+        if pagamentos_ignorados:
+            texto += (
+                f"\n\nIgnorei {pagamentos_ignorados} linha(s) de pagamento da fatura "
+                "(esse valor já aparece como gasto no extrato da conta)."
+            )
+        return texto
 
     def conectar_open_finance(self):
         """PoC: importação automática de transações via Open Finance Brasil.
@@ -369,7 +559,7 @@ class AdvisorState(rx.State):
 
         cliente = OpenFinanceMockClient()
         try:
-            add_chat_message(
+            self._add_chat_message(
                 role="agent",
                 content=(
                     "1/4 · Criando consentimento (permissões: leitura de contas "
@@ -381,7 +571,7 @@ class AdvisorState(rx.State):
                 permissoes=[Permissao.ACCOUNTS_READ, Permissao.ACCOUNTS_TRANSACTIONS_READ],
             )
 
-            add_chat_message(
+            self._add_chat_message(
                 role="agent",
                 content=(
                     f"2/4 · Consentimento `{consentimento.consentId}` criado. Em produção, "
@@ -396,7 +586,7 @@ class AdvisorState(rx.State):
             yield
             conta = cliente.listar_contas(consentimento.consentId)[0]
 
-            add_chat_message(
+            self._add_chat_message(
                 role="agent",
                 content=(
                     f"4/4 · Importando transações de {conta.brandName} "
@@ -408,7 +598,7 @@ class AdvisorState(rx.State):
             novas_transacoes = [transacao_ofb_para_transacao_app(t) for t in transacoes_ofb]
             self._add_transactions(novas_transacoes)
 
-            add_chat_message(
+            self._add_chat_message(
                 role="agent",
                 content=(
                     f"✅ **Importação concluída!** {len(novas_transacoes)} transações trazidas "
@@ -420,7 +610,7 @@ class AdvisorState(rx.State):
             self._add_chat_message(role="agent", content=f"❌ Consentimento recusado: {e}")
         except Exception as e:
             print("Erro na PoC de Open Finance:", e)
-            add_chat_message(
+            self._add_chat_message(
                 role="agent",
                 content="❌ Não consegui concluir a conexão com o Open Finance. Tente novamente.",
             )
@@ -481,7 +671,12 @@ class AdvisorState(rx.State):
         foi extraído ou se o agente falhou), para que `submit_message` possa
         exibir um card de confirmação no chat.
         """
-        response, _ = run_with_fallback(get_data_extractor_agent, EXTRACTOR_LLM_PROVIDER, text)
+        chaves = self._chaves_decifradas()
+        response, _ = run_with_fallback(
+            lambda provider: get_data_extractor_agent(provider, api_keys=chaves),
+            EXTRACTOR_LLM_PROVIDER,
+            text,
+        )
 
         if response is None:
             log_llm_call(
@@ -522,12 +717,20 @@ class AdvisorState(rx.State):
         if not user_query.strip():
             return
 
+        chaves = self._chaves_decifradas()
+        if not any(provedor_tem_chave(p, chaves) for p in ("groq", "openai", "google")):
+            self._add_chat_message(role="user", content=user_query)
+            self._add_chat_message(role="agent", content=MENSAGEM_SEM_CHAVE)
+            self._carregar_dados_sessao()
+            return
+
         historico_formatado = "\n".join(
             f"{msg['role'].upper()}: {msg['content']}" for msg in self.chat_history
         )
 
         self.chat_history.append({"role": "user", "content": user_query})
         self._add_chat_message(role="user", content=user_query)
+        self._titular_conversa_se_nova(user_query)
         self._carregar_dados_sessao()
 
         self.is_loading = True
@@ -547,6 +750,7 @@ class AdvisorState(rx.State):
                     financial_data=self.database_summary,
                     chat_history=historico_formatado,
                     provider=provider,
+                    api_keys=chaves,
                 ),
                 ADVISOR_LLM_PROVIDER,
                 user_query,
@@ -616,4 +820,4 @@ class AdvisorState(rx.State):
     def clear_chat(self):
         """Apaga o histórico do chat e as transações do banco de dados."""
         self._clear_session_data()
-        self._carregar_dados_sessao()
+        self._entrar_na_sessao()

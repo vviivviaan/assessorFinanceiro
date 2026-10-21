@@ -45,10 +45,12 @@ API_KEY_ENV_VARS = {
 
 
 def validate_llm_api_keys() -> None:
-    """Falha cedo e com mensagem clara se faltar chave de algum provedor em uso.
+    """Avisa (sem derrubar o app) se faltar chave no .env para algum provedor em uso.
 
-    Sem isso, um provedor mal configurado só quebraria bem mais tarde, no
-    meio de uma chamada de agente, com um erro genérico do SDK dele.
+    Desde o login por usuário (Fase 5), cada pessoa cadastra as próprias
+    chaves na tela de Configurações, então a chave do .env é só um plano B
+    (desenvolvimento/Docker). Quem não tem nenhuma das duas recebe, no chat,
+    um aviso pedindo para cadastrar a chave.
     """
     provedores_em_uso = {LLM_PROVIDER, EXTRACTOR_LLM_PROVIDER, ADVISOR_LLM_PROVIDER}
     variaveis_faltando = sorted({
@@ -58,11 +60,11 @@ def validate_llm_api_keys() -> None:
     })
 
     if variaveis_faltando:
-        msg = (
-            "Configuração de API incompleta: defina "
-            f"{', '.join(variaveis_faltando)} no arquivo .env antes de rodar o app."
+        print(
+            "[config] Sem chave no .env para: "
+            f"{', '.join(variaveis_faltando)}. Tudo bem se cada usuário cadastrar "
+            "a sua em Configurações."
         )
-        raise RuntimeError(msg)
 
 
 validate_llm_api_keys()

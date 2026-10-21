@@ -4,6 +4,8 @@ import reflex as rx
 from assessor_financeiro.state import AdvisorState
 from assessor_financeiro.ui.components import (
     app_header,
+    auth_screen,
+    config_dialog,
     clientes_panel,
     dashboard_panel,
     onboarding_screen,
@@ -74,15 +76,20 @@ def index() -> rx.Component:
     """
     return rx.box(
         rx.cond(
-            AdvisorState.modo_app == "",
-            _tela_centralizada(onboarding_screen()),
+            ~AdvisorState.logado,
+            _tela_centralizada(auth_screen()),
             rx.cond(
-                (AdvisorState.modo_app == MODO_MULTIEMPRESA)
-                & (AdvisorState.session_id_ativo == ""),
-                _tela_centralizada(clientes_panel()),
-                _app_shell(),
+                AdvisorState.modo_app == "",
+                _tela_centralizada(onboarding_screen()),
+                rx.cond(
+                    (AdvisorState.modo_app == MODO_MULTIEMPRESA)
+                    & (AdvisorState.session_id_ativo == ""),
+                    _tela_centralizada(clientes_panel()),
+                    _app_shell(),
+                ),
             ),
         ),
+        config_dialog(),
         width="100vw",
         height="100vh",
         overflow="hidden",

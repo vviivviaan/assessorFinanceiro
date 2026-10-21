@@ -23,7 +23,11 @@ RUN mkdir -p /app/data
 ENV DB_URL=sqlite:////app/data/reflex.db
 
 # Compila o frontend em modo produção (baixa o Bun automaticamente).
-RUN reflex export --env prod --no-zip
+# As chaves reais só entram em runtime (docker-compose -> env_file). Como o
+# config.py valida as chaves ao ser importado, o build precisa de valores
+# placeholder, passados só neste comando (não ficam gravados na imagem).
+RUN GROQ_API_KEY=build OPENAI_API_KEY=build GOOGLE_API_KEY=build \
+    reflex export --env prod --no-zip
 
 EXPOSE 8000
 

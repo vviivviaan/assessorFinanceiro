@@ -59,7 +59,9 @@ Usuário: "Quais as dicas para economizar?"
 """
 
 
-def get_data_extractor_agent(provider: str | None = None) -> Agent:
+def get_data_extractor_agent(
+    provider: str | None = None, api_keys: dict[str, str] | None = None
+) -> Agent:
     """Agente invisível que roda antes do conselheiro, só para 'pescar' transações no texto.
 
     Usa um modelo focado em velocidade/parsing (Groq por padrão) — a tarefa é
@@ -72,7 +74,9 @@ def get_data_extractor_agent(provider: str | None = None) -> Agent:
             secundário sem precisar mudar a configuração global).
     """
     return Agent(
-        model=get_llm_model(provider_override=provider or EXTRACTOR_LLM_PROVIDER),
+        model=get_llm_model(
+            provider_override=provider or EXTRACTOR_LLM_PROVIDER, api_keys=api_keys
+        ),
         instructions=_montar_instrucoes(),
         output_schema=ListaGastos,  # Habilita o parse estrito via Pydantic nativo do AGNO
     )

@@ -10,7 +10,10 @@ Gemini não estivesse instalado, o app quebrava ao iniciar mesmo que você só
 usasse o Groq. Com o import tardio, cada provedor só precisa estar instalado
 se for realmente o escolhido.
 """
+import os
+
 from assessor_financeiro.config import (
+    API_KEY_ENV_VARS,
     LLM_PROVIDER,
     GROQ_MODEL_ID,
     OPENAI_MODEL_ID,
@@ -18,25 +21,52 @@ from assessor_financeiro.config import (
 )
 
 
-def get_llm_model(provider_override: str | None = None):
+class ChaveApiAusente(Exception):
+    """O provedor escolhido não tem chave nem da usuária nem no .env."""
+
+
+def resolver_chave(provider: str, api_keys: dict[str, str] | None = None) -> str | None:
+    """Chave a usar para o provedor: a cadastrada pela usuária e, se não
+    houver, a do .env (útil em desenvolvimento/Docker)."""
+    if api_keys and api_keys.get(provider):
+        return api_keys[provider]
+    variavel = API_KEY_ENV_VARS.get(provider)
+    return os.getenv(variavel) if variavel else None
+
+
+def provedor_tem_chave(provider: str, api_keys: dict[str, str] | None = None) -> bool:
+    return bool(resolver_chave(provider, api_keys))
+
+
+def get_llm_model(
+    provider_override: str | None = None, api_keys: dict[str, str] | None = None
+):
     """Retorna uma instância do modelo de IA configurado.
 
     Args:
         provider_override: força um provedor específico ("groq", "openai" ou
-            "google"), ignorando o valor de LLM_PROVIDER no .env. Útil para
-            testes ou para permitir que o usuário troque de modelo em tempo
-            de execução no futuro.
+            "google"), ignorando o valor de LLM_PROVIDER no .env.
+        api_keys: chaves da usuária logada ({"groq": "...", ...}). Têm
+            prioridade sobre as do .env.
+
+    Raises:
+        ChaveApiAusente: se não houver chave para o provedor.
     """
     provider = (provider_override or LLM_PROVIDER).lower()
+    if provider not in API_KEY_ENV_VARS:
+        provider = "groq"  # padrão / fallback
+
+    chave = resolver_chave(provider, api_keys)
+    if not chave:
+        raise ChaveApiAusente(provider)
 
     if provider == "openai":
         from agno.models.openai import OpenAIChat
-        return OpenAIChat(id=OPENAI_MODEL_ID)
+        return OpenAIChat(id=OPENAI_MODEL_ID, api_key=chave)
 
     if provider == "google":
         from agno.models.google import Gemini
-        return Gemini(id=GOOGLE_MODEL_ID)
+        return Gemini(id=GOOGLE_MODEL_ID, api_key=chave)
 
-    # Padrão / fallback: Groq
     from agno.models.groq import Groq
-    return Groq(id=GROQ_MODEL_ID)
+    return Groq(id=GROQ_MODEL_ID, api_key=chave)

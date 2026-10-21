@@ -5,6 +5,11 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      # Chave mestra que criptografa as chaves de API dos usuários; fica no
+      # volume (junto do banco), então sobrevive a rebuilds. Para usar uma
+      # chave própria, defina VIVIA_SECRET_KEY no .env.
+      VIVIA_SECRET_FILE: /app/data/secret.key
     volumes:
       # Persiste o reflex.db (SQLite) fora do container, sobrevive a rebuilds.
       - vivia_data:/app/data

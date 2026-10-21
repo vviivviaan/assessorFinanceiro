@@ -16,3 +16,6 @@ logs/
 # backups locais (feitos antes de cada edição/migração arriscada)
 *.bak-*
 reflex.db.*
+
+# chave mestra que criptografa as chaves de API dos usuários (NUNCA versionar)
+.vivia_secret_key
