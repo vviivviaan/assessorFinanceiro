@@ -20,3 +20,5 @@ pytest
 sqlmodel==0.0.42
 # criptografia das chaves de API dos usuários
 cryptography
+# banco PostgreSQL em hospedagem (o SQLite local continua funcionando)
+psycopg2-binary

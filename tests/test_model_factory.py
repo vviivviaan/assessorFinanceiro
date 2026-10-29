@@ -45,3 +45,14 @@ def test_cada_provedor_pega_a_propria_chave(sem_chaves_no_env):
     chaves = {"groq": "chave-groq", "openai": "chave-openai"}
     assert get_llm_model("groq", api_keys=chaves).api_key == "chave-groq"
     assert get_llm_model("openai", api_keys=chaves).api_key == "chave-openai"
+
+
+def test_em_producao_nao_usa_a_chave_do_env(monkeypatch):
+    from assessor_financeiro.llm import model_factory
+
+    monkeypatch.setenv("GROQ_API_KEY", "chave-do-dono-do-servidor")
+    monkeypatch.setattr(model_factory, "USAR_CHAVES_DO_ENV", False)
+    assert model_factory.resolver_chave("groq", {}) is None
+    assert model_factory.resolver_chave("groq", {"groq": "do-usuario"}) == "do-usuario"
+    with pytest.raises(model_factory.ChaveApiAusente):
+        model_factory.get_llm_model("groq", api_keys={})

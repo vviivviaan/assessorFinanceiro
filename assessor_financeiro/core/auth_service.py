@@ -5,6 +5,8 @@ Não importa Reflex: usa `transaction_repository` (acesso ao banco) e
 """
 import datetime
 import re
+import threading
+import time
 
 from assessor_financeiro.core import security
 from assessor_financeiro.core import transaction_repository as repo
@@ -14,6 +16,27 @@ PROVEDORES = {"groq": "Groq", "openai": "OpenAI", "google": "Google (Gemini)"}
 SENHA_MIN = 8
 VALIDADE_SESSAO_DIAS = 30
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+# Limite de tentativas de login por e-mail (proteção contra adivinhar senha).
+# Fica em memória: vale para uma instância do servidor, o que basta para um
+# app pequeno; com várias instâncias, trocar por um contador no banco/Redis.
+MAX_TENTATIVAS = 5
+JANELA_BLOQUEIO_SEG = 15 * 60
+_falhas: dict[str, list[float]] = {}
+_trava = threading.Lock()
+
+
+def _tentativas_recentes(chave: str, agora: float) -> list[float]:
+    recentes = [t for t in _falhas.get(chave, []) if agora - t < JANELA_BLOQUEIO_SEG]
+    _falhas[chave] = recentes
+    return recentes
+
+
+def _limpar_falhas() -> None:
+    """Usado nos testes."""
+    with _trava:
+        _falhas.clear()
 
 
 class ErroAutenticacao(Exception):
@@ -50,10 +73,23 @@ def registrar(email: str, senha: str):
 
 
 def autenticar(email: str, senha: str):
-    usuario = repo.get_usuario_por_email(normalizar_email(email))
+    email = normalizar_email(email)
+    agora = time.time()
+    with _trava:
+        if len(_tentativas_recentes(email, agora)) >= MAX_TENTATIVAS:
+            raise ErroAutenticacao(
+                "Muitas tentativas de login. Aguarde 15 minutos e tente de novo."
+            )
+
+    usuario = repo.get_usuario_por_email(email)
     # Mesma mensagem para e-mail inexistente e senha errada (não revela quais e-mails existem).
     if usuario is None or not security.verificar_senha(senha or "", usuario.senha_hash):
+        with _trava:
+            _falhas.setdefault(email, []).append(agora)
         raise ErroAutenticacao("E-mail ou senha incorretos.")
+
+    with _trava:
+        _falhas.pop(email, None)
     return usuario
 
 

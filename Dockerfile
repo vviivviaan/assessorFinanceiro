@@ -31,5 +31,7 @@ RUN GROQ_API_KEY=build OPENAI_API_KEY=build GOOGLE_API_KEY=build \
 
 EXPOSE 8000
 
-# Aplica migrações pendentes e sobe app+API no mesmo processo/porta.
-CMD ["sh", "-c", "reflex db migrate && reflex run --env prod --single-port --backend-host 0.0.0.0 --backend-port 8000"]
+# Aplica migrações pendentes e sobe app+API no mesmo processo/porta. Em
+# hospedagens (Railway, Render...) a porta vem na variável PORT; localmente
+# o padrão é 8000.
+CMD ["sh", "-c", "reflex db migrate && reflex run --env prod --single-port --backend-host 0.0.0.0 --backend-port ${PORT:-8000}"]

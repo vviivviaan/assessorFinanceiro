@@ -57,3 +57,12 @@ def banco(monkeypatch, tmp_path):
     monkeypatch.setattr(repo.rx, "session", sessao)
     yield engine
     security.limpar_cache_chave_mestra()
+
+
+@pytest.fixture(autouse=True)
+def _zerar_limite_de_login():
+    """Cada teste começa sem tentativas de login registradas."""
+    from assessor_financeiro.core import auth_service
+
+    auth_service._limpar_falhas()
+    yield

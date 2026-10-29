@@ -37,6 +37,14 @@ GOOGLE_MODEL_ID = "gemini-1.5-pro"
 # (nunca hardcoded aqui). Isso permite ter as três configuradas ao mesmo
 # tempo no .env e alternar entre elas só trocando LLM_PROVIDER /
 # EXTRACTOR_LLM_PROVIDER / ADVISOR_LLM_PROVIDER, sem editar código.
+# Em produção (app aberto a outras pessoas) as chaves do .env NÃO devem ser
+# usadas como plano B, senão qualquer visitante gastaria as chaves de quem
+# hospeda. Defina VIVIA_USAR_CHAVES_DO_ENV=false no servidor. Em
+# desenvolvimento local (padrão) continua funcionando como antes.
+USAR_CHAVES_DO_ENV = os.getenv("VIVIA_USAR_CHAVES_DO_ENV", "true").strip().lower() not in (
+    "0", "false", "no", "nao", "não",
+)
+
 API_KEY_ENV_VARS = {
     "groq": "GROQ_API_KEY",
     "openai": "OPENAI_API_KEY",
@@ -52,6 +60,8 @@ def validate_llm_api_keys() -> None:
     (desenvolvimento/Docker). Quem não tem nenhuma das duas recebe, no chat,
     um aviso pedindo para cadastrar a chave.
     """
+    if not USAR_CHAVES_DO_ENV:
+        return  # produção: cada usuário usa só as chaves da própria conta
     provedores_em_uso = {LLM_PROVIDER, EXTRACTOR_LLM_PROVIDER, ADVISOR_LLM_PROVIDER}
     variaveis_faltando = sorted({
         API_KEY_ENV_VARS[provider]

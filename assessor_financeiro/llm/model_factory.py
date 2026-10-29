@@ -14,6 +14,7 @@ import os
 
 from assessor_financeiro.config import (
     API_KEY_ENV_VARS,
+    USAR_CHAVES_DO_ENV,
     LLM_PROVIDER,
     GROQ_MODEL_ID,
     OPENAI_MODEL_ID,
@@ -30,6 +31,8 @@ def resolver_chave(provider: str, api_keys: dict[str, str] | None = None) -> str
     houver, a do .env (útil em desenvolvimento/Docker)."""
     if api_keys and api_keys.get(provider):
         return api_keys[provider]
+    if not USAR_CHAVES_DO_ENV:
+        return None
     variavel = API_KEY_ENV_VARS.get(provider)
     return os.getenv(variavel) if variavel else None
 
