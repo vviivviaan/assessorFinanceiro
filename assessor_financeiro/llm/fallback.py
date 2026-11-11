@@ -19,6 +19,8 @@ PROVEDOR_SECUNDARIO = {
     "groq": "openai",
     "openai": "groq",
     "google": "groq",
+    # Se o Claude falhar (ou o usuário não tiver outra chave), cai para o Groq.
+    "anthropic": "groq",
 }
 
 

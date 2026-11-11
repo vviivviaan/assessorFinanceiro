@@ -37,6 +37,7 @@ from assessor_financeiro.core.transaction_service import (
     montar_opcoes_de_mes,
     filtrar_e_agrupar_transacoes,
     calcular_relatorio_mensal,
+    categorias_por_mes,
     gerar_insight_textual,
     parse_data_flexivel,
     ItemTransacao,
@@ -64,6 +65,7 @@ from assessor_financeiro.agents.advisor_agent import get_financial_advisor
 from assessor_financeiro.agents.extractor_agent import get_data_extractor_agent
 from assessor_financeiro.config import (
     ADVISOR_LLM_PROVIDER,
+    API_KEY_ENV_VARS,
     DEFAULT_SESSION_ID,
     EXTRACTOR_LLM_PROVIDER,
     MODO_MULTIEMPRESA,
@@ -78,8 +80,9 @@ MENSAGEM_BOAS_VINDAS = (
 
 
 MENSAGEM_SEM_CHAVE = (
-    "🔑 Para conversar comigo, cadastre sua chave de API (Groq, OpenAI ou "
-    "Google) em **Configurações** — o ícone de chave no topo da tela."
+    "🔑 Para conversar comigo, cadastre sua chave de API (Groq, OpenAI, "
+    "Google ou, opcionalmente, Claude) em **Configurações** — o ícone de chave "
+    "no topo da tela."
 )
 
 
@@ -133,6 +136,32 @@ class AdvisorState(AuthMixin, rx.State):
     # --- Aba de Relatórios (Fase 6, item 5) ---
     relatorio_mensal: list[RelatorioMensal] = []
     insight_texto: str = ""
+
+    # Mês selecionado no gráfico de barras (clique) — filtra o donut abaixo
+    relatorio_mes_selecionado: str = ""       # "YYYY-MM" ou "" (geral)
+    relatorio_mes_label: str = ""             # ex.: "Jun/26" (para o título)
+    relatorio_chart_data_mes: list[dict[str, Any]] = []
+    relatorio_category_list_mes: list[dict[str, Any]] = []
+    relatorio_gastos_fmt_mes: str = "R$ 0,00"
+
+    @rx.var
+    def relatorio_mensal_destaque(self) -> list[dict[str, Any]]:
+        """Dados do gráfico de barras com o mês selecionado separado em
+        séries próprias (`EntradasSel`/`SaidasSel`), pra poder pintá-lo de
+        outra cor. Os valores que não se aplicam ficam None (não aparecem
+        nem no gráfico nem no tooltip)."""
+        sel = self.relatorio_mes_selecionado
+        saida: list[dict[str, Any]] = []
+        for p in self.relatorio_mensal:
+            marcado = bool(sel) and p["chave"] == sel
+            saida.append({
+                "mes": p["mes"],
+                "Entradas": None if marcado else p["Entradas"],
+                "EntradasSel": p["Entradas"] if marcado else None,
+                "Saidas": None if marcado else p["Saidas"],
+                "SaidasSel": p["Saidas"] if marcado else None,
+            })
+        return saida
 
     @rx.var
     def percentual_gasto(self) -> int:
@@ -189,6 +218,11 @@ class AdvisorState(AuthMixin, rx.State):
         self.meses_disponiveis = []
         self.relatorio_mensal = []
         self.insight_texto = ""
+        self.relatorio_mes_selecionado = ""
+        self.relatorio_mes_label = ""
+        self.relatorio_chart_data_mes = []
+        self.relatorio_category_list_mes = []
+        self.relatorio_gastos_fmt_mes = "R$ 0,00"
         self.saldo_fmt = self.receitas_fmt = self.gastos_fmt = "R$ 0,00"
         self.saldo_atual = self.total_receitas = self.total_gastos = 0.0
         self._esquecer_conversas()
@@ -224,6 +258,56 @@ class AdvisorState(AuthMixin, rx.State):
 
         self.relatorio_mensal = calcular_relatorio_mensal(transactions)
         self.insight_texto = gerar_insight_textual(transactions)
+        self.relatorio_mes_selecionado = ""
+        self.relatorio_mes_label = ""
+        self.relatorio_chart_data_mes = []
+        self.relatorio_category_list_mes = []
+        self.relatorio_gastos_fmt_mes = "R$ 0,00"
+
+    def selecionar_mes_relatorio(self, data: dict[str, Any]):
+        """Handler do clique no gráfico de barras — filtra categorias pelo mês clicado.
+
+        O Recharts envia o estado do gráfico (`activeTooltipIndex`/`activeLabel`);
+        se clicar no mesmo mês já selecionado, volta para a visão geral (toggle).
+        """
+        if not data or not isinstance(data, dict):
+            return
+        ponto = None
+        idx = data.get("activeTooltipIndex", data.get("activeIndex"))
+        try:
+            ponto = self.relatorio_mensal[int(idx)]
+        except (TypeError, ValueError, IndexError):
+            rotulo = data.get("activeLabel")
+            ponto = next((p for p in self.relatorio_mensal if p["mes"] == rotulo), None)
+        if not ponto:
+            return
+        chave = ponto["chave"]
+        label = ponto["mes"]
+
+        # Toggle: clicar de novo no mesmo mês limpa a seleção
+        if chave == self.relatorio_mes_selecionado:
+            self.relatorio_mes_selecionado = ""
+            self.relatorio_mes_label = ""
+            self.relatorio_chart_data_mes = []
+            self.relatorio_category_list_mes = []
+            self.relatorio_gastos_fmt_mes = "R$ 0,00"
+            return
+
+        transactions = self._get_transactions()
+        chart_data, cat_list, gastos_fmt = categorias_por_mes(transactions, chave)
+        self.relatorio_mes_selecionado = chave
+        self.relatorio_mes_label = label
+        self.relatorio_chart_data_mes = chart_data
+        self.relatorio_category_list_mes = cat_list
+        self.relatorio_gastos_fmt_mes = gastos_fmt
+
+    def limpar_selecao_mes_relatorio(self):
+        """Botão 'Ver geral' — volta a mostrar todas as categorias."""
+        self.relatorio_mes_selecionado = ""
+        self.relatorio_mes_label = ""
+        self.relatorio_chart_data_mes = []
+        self.relatorio_category_list_mes = []
+        self.relatorio_gastos_fmt_mes = "R$ 0,00"
 
     # --- Wrappers de repositório escopados pra `session_id_ativo` ---
     # Toda chamada ao banco passa por aqui em vez de usar o
@@ -718,7 +802,7 @@ class AdvisorState(AuthMixin, rx.State):
             return
 
         chaves = self._chaves_decifradas()
-        if not any(provedor_tem_chave(p, chaves) for p in ("groq", "openai", "google")):
+        if not any(provedor_tem_chave(p, chaves) for p in API_KEY_ENV_VARS):
             self._add_chat_message(role="user", content=user_query)
             self._add_chat_message(role="agent", content=MENSAGEM_SEM_CHAVE)
             self._carregar_dados_sessao()
@@ -745,6 +829,14 @@ class AdvisorState(AuthMixin, rx.State):
                 self._add_chat_message(role="confirmation", content=confirmacao)
                 yield  # Mostra o card de confirmação antes de chamar o conselheiro
 
+            # Se o usuário cadastrou a chave do Claude (opcional), o conselheiro
+            # passa a usá-la por padrão — respostas de maior qualidade. Sem ela,
+            # mantém o provedor configurado (ADVISOR_LLM_PROVIDER).
+            provider_conselheiro = (
+                "anthropic"
+                if provedor_tem_chave("anthropic", chaves)
+                else ADVISOR_LLM_PROVIDER
+            )
             response, _ = run_with_fallback(
                 lambda provider: get_financial_advisor(
                     financial_data=self.database_summary,
@@ -752,13 +844,13 @@ class AdvisorState(AuthMixin, rx.State):
                     provider=provider,
                     api_keys=chaves,
                 ),
-                ADVISOR_LLM_PROVIDER,
+                provider_conselheiro,
                 user_query,
             )
             if response is None:
                 log_llm_call(
                     "advisor",
-                    provider_fallback=ADVISOR_LLM_PROVIDER,
+                    provider_fallback=provider_conselheiro,
                     success=False,
                     error="agente conselheiro não respondeu (principal e fallback falharam)",
                 )

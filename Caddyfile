@@ -1,0 +1,18 @@
+{
+	admin off
+}
+
+:{$PORT:8000} {
+	encode gzip
+
+	@backend path /_event /_event/* /ping /_upload /_upload/* /_health
+	handle @backend {
+		reverse_proxy 127.0.0.1:8001
+	}
+
+	handle {
+		root * /srv
+		try_files {path} {path}/ /index.html
+		file_server
+	}
+}

@@ -4,6 +4,8 @@ Faker==40.23.0
 groq==1.5.0
 openai
 google-generativeai
+# Opcional, mas instalado por padrão: habilita a chave do Claude (Anthropic)
+anthropic
 numpy
 ofxparse==0.21
 openpyxl==3.1.5
@@ -20,5 +22,3 @@ pytest
 sqlmodel==0.0.42
 # criptografia das chaves de API dos usuários
 cryptography
-# banco PostgreSQL em hospedagem (o SQLite local continua funcionando)
-psycopg2-binary

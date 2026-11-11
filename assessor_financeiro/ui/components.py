@@ -11,6 +11,8 @@ que recebe uma lista `[mobile, mobile, desktop]` usa o valor certo conforme
 a largura da tela, sem precisar de JS nem de estado extra.
 """
 import reflex as rx
+from reflex.constants import EventTriggers
+from reflex_base.event import EventHandler
 
 from assessor_financeiro.state import AdvisorState
 from assessor_financeiro.config import (
@@ -944,17 +946,55 @@ def transacoes_panel() -> rx.Component:
     )
 
 
+class _BarChartClicavel(rx.recharts.BarChart):
+    """BarChart cujo `on_click` entrega ao handler o estado do clique (o
+    Recharts manda `activeTooltipIndex`/`activeLabel` do mês clicado). O
+    `on_click` padrão do Reflex não passa nenhum argumento. O nome da classe
+    precisa ser `BarChart` pro ResponsiveContainer aceitá-la como filha."""
+
+    on_click: EventHandler[lambda e0: [e0]]
+
+    @classmethod
+    def get_event_triggers(cls):
+        return {**super().get_event_triggers(), EventTriggers.ON_CLICK: lambda e0: [e0]}
+
+
+_BarChartClicavel.__name__ = "BarChart"
+_BarChartClicavel.__qualname__ = "BarChart"
+
+
 def _grafico_barras_mensal() -> rx.Component:
-    """Gráfico de barras: Entradas x Saídas nos últimos 6 meses."""
-    return rx.recharts.bar_chart(
+    """Gráfico de barras: Entradas (verde) x Saídas (vermelho) nos últimos 6 meses.
+    Clicar em um mês filtra o donut de categorias abaixo para aquele mês; com um
+    mês selecionado, os demais ficam em verde/vermelho claro e ele em cor cheia."""
+    # Sem seleção: todas as barras em cor cheia. Com seleção: as outras clareiam.
+    tem_selecao = AdvisorState.relatorio_mes_selecionado != ""
+    verde_base = rx.cond(tem_selecao, "#b4e3c2", COR_VERDE)
+    vermelho_base = rx.cond(tem_selecao, "#f3bcb7", COR_VERMELHO)
+    return _BarChartClicavel.create(
         rx.recharts.cartesian_grid(stroke_dasharray="3 3"),
         rx.recharts.x_axis(data_key="mes"),
         rx.recharts.y_axis(),
-        rx.recharts.bar(data_key="Entradas", fill="#c7d0e8", radius=[4, 4, 0, 0]),
-        rx.recharts.bar(data_key="Saidas", fill=COR_NAVY, radius=[4, 4, 0, 0]),
+        rx.recharts.bar(
+            data_key="Entradas", stack_id="e", fill=verde_base,
+            radius=[4, 4, 0, 0], cursor="pointer",
+        ),
+        rx.recharts.bar(
+            data_key="EntradasSel", name="Entradas", stack_id="e", fill=COR_VERDE,
+            radius=[4, 4, 0, 0], cursor="pointer", legend_type="none",
+        ),
+        rx.recharts.bar(
+            data_key="Saidas", stack_id="s", fill=vermelho_base,
+            radius=[4, 4, 0, 0], cursor="pointer",
+        ),
+        rx.recharts.bar(
+            data_key="SaidasSel", name="Saidas", stack_id="s", fill=COR_VERMELHO,
+            radius=[4, 4, 0, 0], cursor="pointer", legend_type="none",
+        ),
         rx.recharts.legend(),
         rx.recharts.tooltip(),
-        data=AdvisorState.relatorio_mensal,
+        data=AdvisorState.relatorio_mensal_destaque,
+        on_click=AdvisorState.selecionar_mes_relatorio,
         height=260,
         width="100%",
     )
@@ -998,9 +1038,100 @@ def _relatorios_vazio() -> rx.Component:
     )
 
 
+def _grafico_rosca_categorias_mes() -> rx.Component:
+    """Gráfico de rosca filtrado pelo mês selecionado no gráfico de barras."""
+    return rx.box(
+        rx.recharts.pie_chart(
+            rx.recharts.pie(
+                data=AdvisorState.relatorio_chart_data_mes,
+                data_key="value",
+                name_key="name",
+                cx="50%",
+                cy="50%",
+                inner_radius=62,
+                outer_radius=95,
+                fill="#8884d8",
+                stroke="white",
+                stroke_width=2,
+            ),
+            rx.recharts.tooltip(),
+            height=230,
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("Total", size="1", color="var(--gray-9)"),
+            rx.text(AdvisorState.relatorio_gastos_fmt_mes, size="4", weight="bold", color=COR_NAVY),
+            spacing="0",
+            align_items="center",
+            position="absolute",
+            top="50%",
+            left="50%",
+            transform="translate(-50%, -52%)",
+            pointer_events="none",
+        ),
+        position="relative",
+        width="100%",
+    )
+
+
+def _categorias_mes_card() -> rx.Component:
+    """Card 'Gastos por categoria' filtrado por um mês específico, com título
+    indicando o mês e botão para voltar à visão geral."""
+    return _card(
+        rx.hstack(
+            rx.text(
+                "Gastos por categoria · ",
+                rx.text.span(
+                    AdvisorState.relatorio_mes_label,
+                    weight="bold",
+                    color=COR_NAVY,
+                ),
+                size="3",
+                weight="bold",
+                color="#1a2540",
+            ),
+            rx.spacer(),
+            rx.button(
+                rx.icon("x", size=14),
+                "Ver geral",
+                on_click=AdvisorState.limpar_selecao_mes_relatorio,
+                variant="ghost",
+                size="1",
+                cursor="pointer",
+                color="var(--gray-9)",
+            ),
+            spacing="2",
+            align_items="center",
+            width="100%",
+        ),
+        rx.cond(
+            AdvisorState.relatorio_chart_data_mes.length() > 0,
+            rx.fragment(
+                _grafico_rosca_categorias_mes(),
+                rx.vstack(
+                    rx.foreach(AdvisorState.relatorio_category_list_mes, _categoria_row),
+                    spacing="2",
+                    width="100%",
+                ),
+            ),
+            rx.text(
+                "Nenhuma saída registrada neste mês.",
+                size="2",
+                color="var(--gray-9)",
+                padding_y="1em",
+                text_align="center",
+            ),
+        ),
+    )
+
+
 def relatorios_panel() -> rx.Component:
     """Conteúdo da aba Relatórios: entradas x saídas (6 meses), distribuição
-    por categoria e um card de insight em linguagem natural."""
+    por categoria e um card de insight em linguagem natural.
+
+    Ao clicar em um mês no gráfico de barras, o donut de categorias abaixo
+    é filtrado para mostrar apenas as categorias daquele mês, com um título
+    indicando qual mês está sendo observado."""
     return rx.box(
         rx.cond(
             AdvisorState.transacoes_todas.length() > 0,
@@ -1021,10 +1152,34 @@ def relatorios_panel() -> rx.Component:
                 ),
                 _insight_card(),
                 _card(
-                    rx.text("Entradas x Saídas · últimos 6 meses", size="3", weight="bold", color="#1a2540"),
+                    rx.hstack(
+                        rx.text("Entradas x Saídas · últimos 6 meses", size="3", weight="bold", color="#1a2540"),
+                        rx.spacer(),
+                        rx.cond(
+                            AdvisorState.relatorio_mes_selecionado != "",
+                            rx.text(
+                                "Clique no mesmo mês para limpar",
+                                size="1",
+                                color="var(--gray-8)",
+                                font_style="italic",
+                            ),
+                            rx.text(
+                                "Clique em um mês para filtrar",
+                                size="1",
+                                color="var(--gray-8)",
+                                font_style="italic",
+                            ),
+                        ),
+                        width="100%",
+                        align_items="center",
+                    ),
                     _grafico_barras_mensal(),
                 ),
-                rx.cond(AdvisorState.chart_data.length() > 0, _categorias_card(), rx.fragment()),
+                rx.cond(
+                    AdvisorState.relatorio_mes_selecionado != "",
+                    _categorias_mes_card(),
+                    rx.cond(AdvisorState.chart_data.length() > 0, _categorias_card(), rx.fragment()),
+                ),
                 width="100%",
                 spacing="3",
                 padding_bottom="2em",

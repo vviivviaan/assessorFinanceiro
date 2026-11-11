@@ -57,6 +57,7 @@ class RelatorioMensal(TypedDict):
     """Um ponto do gráfico de barras Entradas x Saídas (um mês)."""
 
     mes: str
+    chave: str  # "YYYY-MM" — usado para filtrar ao clicar no gráfico
     Entradas: float
     Saidas: float
 
@@ -85,12 +86,8 @@ def parse_data_flexivel(valor) -> "datetime | None":
     if not texto or texto.lower() in ("nat", "none", "nan", ""):
         return None
 
-    # Datas ISO (AAAA-MM-DD...) são inequívocas: com dayfirst=True o pandas
-    # trocava dia e mês (2026-08-12 virava 08/12). dayfirst só vale pro
-    # formato brasileiro (dd/mm/aaaa).
-    iso = len(texto) >= 10 and texto[4] == "-" and texto[:4].isdigit()
     try:
-        convertido = pd.to_datetime(texto, dayfirst=not iso, errors="coerce")
+        convertido = pd.to_datetime(texto, dayfirst=True, errors="coerce")
     except (ValueError, TypeError):
         return None
     if convertido is None or pd.isna(convertido):
@@ -297,10 +294,50 @@ def calcular_relatorio_mensal(transactions: list[Transaction], meses: int = 6) -
         ano, mes_num = chave.split("-")
         resultado.append({
             "mes": f"{MESES_PT[int(mes_num)][:3]}/{ano[2:]}",
+            "chave": chave,
             "Entradas": round(totais[chave]["Entradas"], 2),
             "Saidas": round(totais[chave]["Saidas"], 2),
         })
     return resultado
+
+
+def categorias_por_mes(
+    transactions: list[Transaction], chave_mes: str
+) -> tuple[list[dict], list[dict], str]:
+    """Calcula chart_data e category_list filtrados para um único mês (chave_mes = "YYYY-MM").
+
+    Retorna (chart_data, category_list_fmt, gastos_fmt_mes).
+    """
+    category_totals: dict[str, float] = {}
+    total_gastos = 0.0
+
+    for t in transactions:
+        if t.created_at is None:
+            continue
+        if t.created_at.strftime("%Y-%m") != chave_mes:
+            continue
+        tipo = t.type.lower().strip()
+        if tipo not in DEBITO_ALIASES:
+            continue
+        valor = abs(float(t.amount))
+        total_gastos += valor
+        cat = t.category or "Outros"
+        category_totals[cat] = category_totals.get(cat, 0.0) + valor
+
+    ordenadas = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+    chart_data = [
+        {
+            "name": str(cat),
+            "value": float(round(val, 2)),
+            "fill": PALETA_FINANCEIRA[i % len(PALETA_FINANCEIRA)],
+        }
+        for i, (cat, val) in enumerate(ordenadas)
+    ]
+    category_list_fmt = [
+        {**item, "value_fmt": formatar_reais(item["value"])}
+        for item in chart_data
+    ]
+    return chart_data, category_list_fmt, formatar_reais(total_gastos)
 
 
 def gerar_insight_textual(transactions: list[Transaction]) -> str:

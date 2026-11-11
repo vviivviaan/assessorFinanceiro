@@ -31,6 +31,10 @@ ADVISOR_LLM_PROVIDER = os.getenv("ADVISOR_LLM_PROVIDER", "openai").lower()
 GROQ_MODEL_ID = "openai/gpt-oss-120b"
 OPENAI_MODEL_ID = "gpt-4o-mini"
 GOOGLE_MODEL_ID = "gemini-1.5-pro"
+# Claude (Anthropic) — provedor OPCIONAL. Se o usuário cadastrar essa chave em
+# Configurações, o conselheiro passa a usá-la (respostas de maior qualidade).
+# Sem ela, o app funciona normalmente com Groq/OpenAI/Google.
+ANTHROPIC_MODEL_ID = "claude-sonnet-4-5"
 
 # --- Chaves de API ---
 # Cada provedor suportado tem sua chave em uma variável de ambiente própria
@@ -49,6 +53,7 @@ API_KEY_ENV_VARS = {
     "groq": "GROQ_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
 }
 
 

@@ -1,6 +1,6 @@
 """Fábrica de modelos de LLM.
 
-Permite alternar entre provedores (Groq, OpenAI, Google) apenas mudando a
+Permite alternar entre provedores (Groq, OpenAI, Google, Claude) apenas mudando a
 variável de ambiente LLM_PROVIDER, sem tocar no código dos agentes.
 
 IMPORTANTE: os imports de cada provedor são feitos *dentro* de cada branch
@@ -19,6 +19,7 @@ from assessor_financeiro.config import (
     GROQ_MODEL_ID,
     OPENAI_MODEL_ID,
     GOOGLE_MODEL_ID,
+    ANTHROPIC_MODEL_ID,
 )
 
 
@@ -47,8 +48,8 @@ def get_llm_model(
     """Retorna uma instância do modelo de IA configurado.
 
     Args:
-        provider_override: força um provedor específico ("groq", "openai" ou
-            "google"), ignorando o valor de LLM_PROVIDER no .env.
+        provider_override: força um provedor específico ("groq", "openai",
+            "google" ou "anthropic"), ignorando o valor de LLM_PROVIDER no .env.
         api_keys: chaves da usuária logada ({"groq": "...", ...}). Têm
             prioridade sobre as do .env.
 
@@ -70,6 +71,10 @@ def get_llm_model(
     if provider == "google":
         from agno.models.google import Gemini
         return Gemini(id=GOOGLE_MODEL_ID, api_key=chave)
+
+    if provider == "anthropic":
+        from agno.models.anthropic import Claude
+        return Claude(id=ANTHROPIC_MODEL_ID, api_key=chave)
 
     from agno.models.groq import Groq
     return Groq(id=GROQ_MODEL_ID, api_key=chave)
