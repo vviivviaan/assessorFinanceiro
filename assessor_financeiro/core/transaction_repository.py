@@ -70,6 +70,31 @@ def add_transactions(
         db.commit()
 
 
+def delete_transactions(ids: list[int], session_id: str = DEFAULT_SESSION_ID) -> list[Transaction]:
+    """Apaga as transações `ids` DESTE perfil (session_id) e devolve as que foram
+    apagadas. O filtro por session_id garante que um id vindo do agente nunca
+    apague dado de outro usuário/cliente."""
+    if not ids:
+        return []
+    with rx.session() as db:
+        alvos = (
+            db.query(Transaction)
+            .filter(Transaction.session_id == session_id, Transaction.id.in_(ids))
+            .all()
+        )
+        apagadas = [
+            Transaction(
+                id=t.id, category=t.category, amount=t.amount, type=t.type,
+                session_id=t.session_id, created_at=t.created_at,
+            )
+            for t in alvos
+        ]
+        for t in alvos:
+            db.delete(t)
+        db.commit()
+        return apagadas
+
+
 def clear_session_data(session_id: str = DEFAULT_SESSION_ID) -> None:
     with rx.session() as db:
         db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()

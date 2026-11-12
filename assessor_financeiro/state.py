@@ -21,6 +21,7 @@ from assessor_financeiro.core.transaction_repository import (
     add_transactions,
     clear_session_data,
     create_cliente,
+    delete_transactions,
     create_conversa,
     delete_conversa,
     get_chat_history,
@@ -77,6 +78,11 @@ MENSAGEM_BOAS_VINDAS = (
     "Olá! 👋 Sou a vivIA, sua Assessora Financeira Pessoal. "
     "O que te faz feliz no tempo livre?"
 )
+
+
+# Quantas transações recentes o extrator "enxerga" para poder corrigir/apagar.
+# (Constante de módulo, não atributo do State: lá ela viraria variável enviada ao navegador.)
+LIMITE_CONTEXTO_EXTRATOR = 40
 
 
 MENSAGEM_SEM_CHAVE = (
@@ -333,8 +339,18 @@ class AdvisorState(AuthMixin, rx.State):
     def _add_transactions(self, items: list[dict]):
         add_transactions(items, session_id=self.session_id_ativo)
 
+    def _delete_transactions(self, ids: list[int]):
+        return delete_transactions(ids, session_id=self.session_id_ativo)
+
     def _clear_session_data(self):
         clear_session_data(self.session_id_ativo)
+
+    def excluir_transacao(self, transacao_id: int):
+        """Lixeira de cada linha da aba Transações: apaga um lançamento errado
+        sem depender do chat e atualiza painel, relatórios e resumo."""
+        removidas = self._delete_transactions([int(transacao_id)])
+        if removidas:
+            self._carregar_dados_sessao()
 
     # --- Modo de uso + clientes (Fase 7) ---
 
@@ -748,18 +764,55 @@ class AdvisorState(AuthMixin, rx.State):
         plural = "transações" if len(itens) > 1 else "transação"
         return f"✅ **{len(itens)} {plural} registrada(s):**\n{linhas}"
 
-    def extract_transactions_from_text(self, text: str) -> list[dict]:
-        """Passo 1 da orquestração: roda o agente extrator para 'pescar' gastos do chat.
+    def _transacoes_recentes(self) -> list:
+        """As últimas transações lançadas (maior id primeiro)."""
+        transacoes = sorted(self._get_transactions(), key=lambda t: t.id or 0, reverse=True)
+        return transacoes[:LIMITE_CONTEXTO_EXTRATOR]
 
-        Retorna a lista de transações novas já salvas no banco (ou [] se nada
-        foi extraído ou se o agente falhou), para que `submit_message` possa
-        exibir um card de confirmação no chat.
+    @staticmethod
+    def _bloco_transacoes(transacoes: list) -> str:
+        """Bloco de contexto enviado ao extrator, para ele achar o id do que o
+        usuário quer apagar/corrigir."""
+        if not transacoes:
+            return "TRANSAÇÕES JÁ REGISTRADAS: (nenhuma)"
+        linhas = [
+            f"{t.id} | {t.created_at.strftime('%Y-%m-%d') if t.created_at else 'sem data'}"
+            f" | {t.type} | {abs(float(t.amount)):.2f} | {t.category}"
+            for t in transacoes
+        ]
+        return (
+            "TRANSAÇÕES JÁ REGISTRADAS (mais recentes primeiro; "
+            "id | data | tipo | valor | categoria):\n" + "\n".join(linhas)
+        )
+
+    @staticmethod
+    def _formatar_remocao(removidas: list) -> str:
+        """Card exibido no chat quando o extrator apaga lançamentos (correções)."""
+        linhas = "\n".join(
+            f"- {t.category}: {formatar_reais(abs(float(t.amount)))} "
+            f"({'Recebimento' if t.type.lower().strip() in ('credito', 'crédito') else 'Gasto'}"
+            f"{', ' + t.created_at.strftime('%d/%m/%Y') if t.created_at else ''})"
+            for t in removidas
+        )
+        plural = "transações removidas" if len(removidas) > 1 else "transação removida"
+        return f"🗑️ **{len(removidas)} {plural}:**\n{linhas}"
+
+    def extract_transactions_from_text(self, text: str) -> tuple[list[dict], list]:
+        """Passo 1 da orquestração: roda o agente extrator para 'pescar' gastos do chat
+        e aplicar correções (remoção de lançamentos errados).
+
+        Retorna `(novas, removidas)`: as transações novas já salvas no banco e as
+        que foram apagadas — ambas vazias se nada mudou ou se o agente falhou —,
+        para que `submit_message` exiba os cards de confirmação no chat.
         """
         chaves = self._chaves_decifradas()
+        recentes = self._transacoes_recentes()
+        ids_permitidos = {t.id for t in recentes}
+        entrada = f"MENSAGEM DO USUÁRIO:\n{text}\n\n{self._bloco_transacoes(recentes)}"
         response, _ = run_with_fallback(
             lambda provider: get_data_extractor_agent(provider, api_keys=chaves),
             EXTRACTOR_LLM_PROVIDER,
-            text,
+            entrada,
         )
 
         if response is None:
@@ -770,29 +823,39 @@ class AdvisorState(AuthMixin, rx.State):
                 error="agente extrator não respondeu (principal e fallback falharam)",
             )
             print("Erro ao chamar o agente extrator (principal e fallback falharam)")
-            return []
+            return [], []
 
         try:
             # Com output_schema, response.content já é a instância de ListaGastos (Pydantic)
             lista_extraida = response.content
             schema_valido = hasattr(lista_extraida, "gastos")
-
-            if schema_valido and lista_extraida.gastos:
-                novas_transacoes = self._gastos_para_transacoes(lista_extraida.gastos)
-                self._add_transactions(novas_transacoes)
-                self._carregar_dados_sessao()  # Atualiza o dashboard e o resumo do banco
-                log_llm_call("extractor", response=response, success=schema_valido)
-                return novas_transacoes
-
-            # Uma lista vazia também é um resultado válido (mensagem sem
-            # transação nova) — só conta como falha se o schema veio quebrado.
             log_llm_call("extractor", response=response, success=schema_valido)
-            return []
+            if not schema_valido:
+                return [], []
+
+            # Remoções: só ids que estavam no bloco enviado ao agente (nada de
+            # id inventado), e sempre filtrado pelo perfil ativo no repositório.
+            ids_remover = [
+                int(i) for i in (getattr(lista_extraida, "remover_ids", None) or [])
+                if int(i) in ids_permitidos
+            ]
+            removidas = self._delete_transactions(ids_remover) if ids_remover else []
+
+            novas_transacoes = (
+                self._gastos_para_transacoes(lista_extraida.gastos)
+                if lista_extraida.gastos else []
+            )
+            if novas_transacoes:
+                self._add_transactions(novas_transacoes)
+
+            if removidas or novas_transacoes:
+                self._carregar_dados_sessao()  # Atualiza o dashboard e o resumo do banco
+            return novas_transacoes, removidas
 
         except Exception as e:
             log_llm_call("extractor", response=response, success=False, error=str(e))
             print(f"Erro ao extrair e salvar transações estruturadas: {e}")
-            return []
+            return [], []
 
     def submit_message(self, form_data: dict):
         """Recebe os dados do formulário quando o usuário aperta Enter ou clica em Enviar."""
@@ -821,13 +884,39 @@ class AdvisorState(AuthMixin, rx.State):
         yield  # Atualiza a nova mensagem enviada no chat
 
         try:
-            novas_transacoes = self.extract_transactions_from_text(user_query)
+            novas_transacoes, removidas = self.extract_transactions_from_text(user_query)
 
+            if removidas:
+                aviso = self._formatar_remocao(removidas)
+                self.chat_history.append({"role": "confirmation", "content": aviso})
+                self._add_chat_message(role="confirmation", content=aviso)
             if novas_transacoes:
                 confirmacao = self._formatar_confirmacao(novas_transacoes)
                 self.chat_history.append({"role": "confirmation", "content": confirmacao})
                 self._add_chat_message(role="confirmation", content=confirmacao)
-                yield  # Mostra o card de confirmação antes de chamar o conselheiro
+            if removidas or novas_transacoes:
+                yield  # Mostra os cards antes de chamar o conselheiro
+
+            # O conselheiro precisa saber o que já foi feito nesta mensagem, senão
+            # ele pode, por exemplo, pedir para o usuário apagar algo que já sumiu.
+            mensagem_conselheiro = user_query
+            notas = []
+            if removidas:
+                notas.append("O sistema JÁ APAGOU estes lançamentos: " + "; ".join(
+                    f"{t.category} {formatar_reais(abs(float(t.amount)))} ({t.type})"
+                    for t in removidas
+                ))
+            if novas_transacoes:
+                notas.append("O sistema JÁ REGISTROU: " + "; ".join(
+                    f"{i['category']} {formatar_reais(i['amount'])} ({i['type']})"
+                    for i in novas_transacoes
+                ))
+            if notas:
+                mensagem_conselheiro += (
+                    "\n\n[Nota do sistema, não escrita pelo usuário: " + " ".join(notas)
+                    + " Os números do RESUMO ATUAL já refletem isso. Confirme brevemente "
+                    "e use os valores atualizados.]"
+                )
 
             # Se o usuário cadastrou a chave do Claude (opcional), o conselheiro
             # passa a usá-la por padrão — respostas de maior qualidade. Sem ela,
@@ -845,7 +934,7 @@ class AdvisorState(AuthMixin, rx.State):
                     api_keys=chaves,
                 ),
                 provider_conselheiro,
-                user_query,
+                mensagem_conselheiro,
             )
             if response is None:
                 log_llm_call(

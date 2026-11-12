@@ -865,6 +865,50 @@ def _filtros_transacoes() -> rx.Component:
     )
 
 
+def _botao_excluir_transacao(item: dict) -> rx.Component:
+    """Lixeira de uma transação (com confirmação) — para corrigir um lançamento
+    errado sem depender do chat."""
+    return rx.alert_dialog.root(
+        rx.alert_dialog.trigger(
+            rx.icon_button(
+                rx.icon("trash-2", size=14),
+                variant="ghost",
+                size="1",
+                color_scheme="gray",
+                cursor="pointer",
+                aria_label="Excluir transação",
+            )
+        ),
+        rx.alert_dialog.content(
+            rx.alert_dialog.title("Excluir transação?"),
+            rx.alert_dialog.description(
+                rx.text(
+                    item["category"], " · ", item["amount_fmt_signed"],
+                    weight="bold",
+                ),
+                rx.text(
+                    "Ela some do saldo, dos gráficos e dos relatórios. Não dá para desfazer.",
+                    size="2",
+                    margin_top="0.5em",
+                ),
+            ),
+            rx.flex(
+                rx.alert_dialog.cancel(rx.button("Cancelar", variant="soft", color_scheme="gray")),
+                rx.alert_dialog.action(
+                    rx.button(
+                        "Excluir",
+                        color_scheme="red",
+                        on_click=AdvisorState.excluir_transacao(item["id"]),
+                    )
+                ),
+                spacing="3",
+                justify="end",
+                margin_top="1em",
+            ),
+        ),
+    )
+
+
 def _transacao_row(item: dict) -> rx.Component:
     """Uma linha da lista de transações: ícone quadrado, categoria, hora e valor."""
     cor = rx.cond(item["is_credito"], COR_VERDE, COR_VERMELHO)
@@ -878,6 +922,7 @@ def _transacao_row(item: dict) -> rx.Component:
         ),
         rx.spacer(),
         rx.text(item["amount_fmt_signed"], size="2", weight="bold", color=cor),
+        _botao_excluir_transacao(item),
         width="100%",
         align_items="center",
         padding_y="0.6em",

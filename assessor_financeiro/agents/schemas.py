@@ -20,4 +20,15 @@ class ItemGasto(BaseModel):
 
 
 class ListaGastos(BaseModel):
-    gastos: list[ItemGasto]
+    gastos: list[ItemGasto] = Field(
+        default_factory=list,
+        description="Transações NOVAS a registrar (vazio se não houver nenhuma).",
+    )
+    remover_ids: list[int] = Field(
+        default_factory=list,
+        description=(
+            "IDs (da lista 'TRANSAÇÕES JÁ REGISTRADAS') das transações que o "
+            "usuário pediu para apagar ou que estão sendo corrigidas. Use SOMENTE "
+            "IDs que aparecem nessa lista. Vazio se nada deve ser apagado."
+        ),
+    )
