@@ -86,8 +86,15 @@ def parse_data_flexivel(valor) -> "datetime | None":
     if not texto or texto.lower() in ("nat", "none", "nan", ""):
         return None
 
+    # Datas ISO (AAAA-MM-DD...) são inequívocas: com dayfirst=True o pandas
+    # trocava dia e mês (2026-08-12 virava 08/12). dayfirst só vale pro
+    # formato brasileiro (dd/mm/aaaa).
+    # (Também vale pro formato compacto AAAAMMDD, comum em OFX.)
+    iso = (len(texto) >= 10 and texto[4] == "-" and texto[:4].isdigit()) or (
+        len(texto) == 8 and texto.isdigit()
+    )
     try:
-        convertido = pd.to_datetime(texto, dayfirst=True, errors="coerce")
+        convertido = pd.to_datetime(texto, dayfirst=not iso, errors="coerce")
     except (ValueError, TypeError):
         return None
     if convertido is None or pd.isna(convertido):
@@ -155,7 +162,7 @@ class FinancialSummary:
             f"Saldo Atual: R$ {self.saldo_atual:.2f}\n\n"
             "Detalhamento de Gastos por Categoria:\n"
         )
-        for categoria, valor in self.category_totals.items():
+        for categoria, valor in self._categorias_ordenadas():
             texto += f"- {categoria}: R$ {valor:.2f}\n"
         return texto
 
@@ -304,40 +311,31 @@ def calcular_relatorio_mensal(transactions: list[Transaction], meses: int = 6) -
 def categorias_por_mes(
     transactions: list[Transaction], chave_mes: str
 ) -> tuple[list[dict], list[dict], str]:
-    """Calcula chart_data e category_list filtrados para um único mês (chave_mes = "YYYY-MM").
-
-    Retorna (chart_data, category_list_fmt, gastos_fmt_mes).
-    """
-    category_totals: dict[str, float] = {}
-    total_gastos = 0.0
-
-    for t in transactions:
-        if t.created_at is None:
-            continue
-        if t.created_at.strftime("%Y-%m") != chave_mes:
-            continue
-        tipo = t.type.lower().strip()
-        if tipo not in DEBITO_ALIASES:
-            continue
-        valor = abs(float(t.amount))
-        total_gastos += valor
-        cat = t.category or "Outros"
-        category_totals[cat] = category_totals.get(cat, 0.0) + valor
-
-    ordenadas = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
-    chart_data = [
-        {
-            "name": str(cat),
-            "value": float(round(val, 2)),
-            "fill": PALETA_FINANCEIRA[i % len(PALETA_FINANCEIRA)],
-        }
-        for i, (cat, val) in enumerate(ordenadas)
+    """Gastos por categoria de um único mês (`chave_mes` = "AAAA-MM"), no mesmo
+    formato do painel geral: `(chart_data, category_list_fmt, gastos_fmt)`."""
+    do_mes = [
+        t for t in transactions
+        if t.created_at is not None and t.created_at.strftime("%Y-%m") == chave_mes
     ]
-    category_list_fmt = [
-        {**item, "value_fmt": formatar_reais(item["value"])}
-        for item in chart_data
+    resumo = summarize_transactions(do_mes)
+    return resumo.chart_data, resumo.category_list_fmt, resumo.gastos_fmt
+
+
+def resumo_para_conselheiro(transactions: list[Transaction], meses: int = 6) -> str:
+    """Texto injetado no prompt do conselheiro: os totais gerais (`as_text`)
+    mais as entradas e saídas mês a mês. Sem a parte mensal, o agente só
+    conhecia o acumulado e não tinha como responder "quanto gastei em agosto?"
+    sem inventar."""
+    texto = summarize_transactions(transactions).as_text
+    linhas = [
+        f"- {ponto['mes']}: entradas R$ {ponto['Entradas']:.2f} | saídas R$ {ponto['Saidas']:.2f}"
+        f" | saldo do mês R$ {ponto['Entradas'] - ponto['Saidas']:.2f}"
+        for ponto in calcular_relatorio_mensal(transactions, meses=meses)
+        if ponto["Entradas"] or ponto["Saidas"]
     ]
-    return chart_data, category_list_fmt, formatar_reais(total_gastos)
+    if linhas:
+        texto += f"\nEntradas e saídas por mês (últimos {meses} meses):\n" + "\n".join(linhas) + "\n"
+    return texto
 
 
 def gerar_insight_textual(transactions: list[Transaction]) -> str:

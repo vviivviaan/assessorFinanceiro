@@ -160,3 +160,40 @@ class TestChavesDeApi:
         monkeypatch.setenv("VIVIA_SECRET_KEY", Fernet.generate_key().decode())
         security.limpar_cache_chave_mestra()
         assert auth.chaves_decifradas(usuario.id) == {}
+
+
+class TestLimiteDeTentativas:
+    def test_bloqueia_depois_de_5_senhas_erradas_mesmo_com_a_senha_certa(self):
+        auth.registrar("a@b.com", "senha-forte-1")
+        for _ in range(auth.MAX_TENTATIVAS):
+            with pytest.raises(ErroAutenticacao, match="incorretos"):
+                auth.autenticar("a@b.com", "errada-123")
+        with pytest.raises(ErroAutenticacao, match="Muitas tentativas"):
+            auth.autenticar("a@b.com", "senha-forte-1")
+
+    def test_login_certo_zera_o_contador(self):
+        auth.registrar("a@b.com", "senha-forte-1")
+        for _ in range(auth.MAX_TENTATIVAS - 1):
+            with pytest.raises(ErroAutenticacao):
+                auth.autenticar("a@b.com", "errada-123")
+        auth.autenticar("a@b.com", "senha-forte-1")
+        for _ in range(auth.MAX_TENTATIVAS - 1):
+            with pytest.raises(ErroAutenticacao, match="incorretos"):
+                auth.autenticar("a@b.com", "errada-123")
+
+    def test_bloqueio_de_um_email_nao_afeta_outro(self):
+        auth.registrar("a@b.com", "senha-forte-1")
+        auth.registrar("c@d.com", "senha-forte-2")
+        for _ in range(auth.MAX_TENTATIVAS):
+            with pytest.raises(ErroAutenticacao):
+                auth.autenticar("a@b.com", "errada-123")
+        assert auth.autenticar("c@d.com", "senha-forte-2").email == "c@d.com"
+
+    def test_bloqueio_expira_depois_da_janela(self, monkeypatch):
+        auth.registrar("a@b.com", "senha-forte-1")
+        for _ in range(auth.MAX_TENTATIVAS):
+            with pytest.raises(ErroAutenticacao):
+                auth.autenticar("a@b.com", "errada-123")
+        futuro = auth.time.time() + auth.JANELA_BLOQUEIO_SEG + 1
+        monkeypatch.setattr(auth.time, "time", lambda: futuro)
+        assert auth.autenticar("a@b.com", "senha-forte-1").email == "a@b.com"

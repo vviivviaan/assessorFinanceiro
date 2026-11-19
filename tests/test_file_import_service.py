@@ -142,9 +142,8 @@ class TestDespachoPorExtensao:
             parse_extrato_tabular(nome, b"qualquer coisa")
 
 
-class TestLacunasConhecidas:
-    # Era uma lacuna conhecida (xfail): a validação da coluna "tipo" já foi feita.
-    def test_tipo_que_nao_e_credito_nem_debito_deveria_ser_rejeitado(self):
+class TestValidacaoDoTipo:
+    def test_tipo_que_nao_e_credito_nem_debito_e_rejeitado(self):
         bruto = "01/09/2026,compras do mês,156,supermercado\n".encode("utf-8")
         with pytest.raises(ValueError):
             parse_extrato_tabular("gastos.csv", bruto)

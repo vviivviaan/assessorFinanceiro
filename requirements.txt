@@ -3,8 +3,9 @@ agno==2.6.20
 Faker==40.23.0
 groq==1.5.0
 openai
-google-generativeai
-# Opcional, mas instalado por padrão: habilita a chave do Claude (Anthropic)
+# SDK do Gemini que o agno usa (o antigo google-generativeai não serve mais)
+google-genai
+# habilita a chave opcional do Claude (Anthropic)
 anthropic
 numpy
 ofxparse==0.21
@@ -22,3 +23,5 @@ pytest
 sqlmodel==0.0.42
 # criptografia das chaves de API dos usuários
 cryptography
+# banco PostgreSQL em hospedagem (o SQLite local continua funcionando)
+psycopg2-binary

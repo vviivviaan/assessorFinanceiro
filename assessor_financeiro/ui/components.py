@@ -19,9 +19,7 @@ from assessor_financeiro.config import (
     MODO_MULTIEMPRESA,
     MODO_PESSOAL,
     COR_NAVY,
-    COR_NAVY_ESCURO,
     COR_NAVY_SUAVE,
-    COR_FUNDO_APP,
     COR_VERDE,
     COR_VERDE_BG,
     COR_VERMELHO,
@@ -182,10 +180,50 @@ def _badge_modo() -> rx.Component:
     )
 
 
+def _botao_header(icone: str, rotulo: str, **props) -> rx.Component:
+    """Botão do header navy: ícone sempre visível, rótulo só no desktop."""
+    return rx.button(
+        rx.icon(icone, size=16),
+        rx.text(rotulo, display=["none", "none", "block"]),
+        variant="ghost",
+        size="2",
+        cursor="pointer",
+        style={"color": "rgba(255,255,255,0.85)"},
+        _hover={"background_color": "rgba(255,255,255,0.14)"},
+        **props,
+    )
+
+
+def _botao_zerar_dados() -> rx.Component:
+    """'Zerar Dados' apaga TODAS as transações e conversas do perfil aberto e
+    não tem volta, então pede confirmação antes (um clique sem querer no
+    header não pode custar o histórico inteiro)."""
+    return rx.alert_dialog.root(
+        rx.alert_dialog.trigger(_botao_header("trash-2", "Zerar Dados")),
+        rx.alert_dialog.content(
+            rx.alert_dialog.title("Zerar todos os dados?"),
+            rx.alert_dialog.description(
+                "Todas as transações e conversas deste perfil serão apagadas. "
+                "Não dá para desfazer. Se quiser guardar uma cópia, use antes o "
+                "botão Exportar da aba Relatórios."
+            ),
+            rx.flex(
+                rx.alert_dialog.cancel(rx.button("Cancelar", variant="soft", color_scheme="gray")),
+                rx.alert_dialog.action(
+                    rx.button("Zerar tudo", color_scheme="red", on_click=AdvisorState.clear_chat)
+                ),
+                spacing="3",
+                justify="end",
+                margin_top="1em",
+            ),
+        ),
+    )
+
+
 def app_header() -> rx.Component:
-    """Header navy fixo no topo do app: logo 'vivIA' + badge 'Pessoal' + botão
-    de zerar dados. Substitui o antigo header interno da aba Chat — agora
-    aparece uma vez só, acima de todas as abas (Fase 7)."""
+    """Header navy fixo no topo do app: logo 'vivIA' + badge do perfil +
+    ações (trocar de modo, configurações, zerar dados, sair). Aparece uma vez
+    só, acima de todas as abas (Fase 7)."""
     return rx.hstack(
         rx.hstack(
             rx.box(
@@ -212,48 +250,17 @@ def app_header() -> rx.Component:
                 on_click=AdvisorState.voltar_para_clientes,
                 variant="ghost",
                 size="2",
+                cursor="pointer",
                 style={"color": "rgba(255,255,255,0.85)"},
                 _hover={"background_color": "rgba(255,255,255,0.14)"},
             ),
             rx.fragment(),
         ),
         rx.spacer(),
-        rx.button(
-            rx.icon("repeat", size=16),
-            rx.text("Trocar de modo", display=["none", "none", "block"]),
-            on_click=AdvisorState.trocar_modo,
-            variant="ghost",
-            size="2",
-            style={"color": "rgba(255,255,255,0.85)"},
-            _hover={"background_color": "rgba(255,255,255,0.14)"},
-        ),
-        rx.button(
-            rx.icon("key-round", size=16),
-            rx.text("Configurações", display=["none", "none", "block"]),
-            on_click=AdvisorState.abrir_config,
-            variant="ghost",
-            size="2",
-            style={"color": "rgba(255,255,255,0.85)"},
-            _hover={"background_color": "rgba(255,255,255,0.14)"},
-        ),
-        rx.button(
-            rx.icon("trash-2", size=16),
-            rx.text("Zerar Dados", display=["none", "none", "block"]),
-            on_click=AdvisorState.clear_chat,
-            variant="ghost",
-            size="2",
-            style={"color": "rgba(255,255,255,0.85)"},
-            _hover={"background_color": "rgba(255,255,255,0.14)"},
-        ),
-        rx.button(
-            rx.icon("log-out", size=16),
-            rx.text("Sair", display=["none", "none", "block"]),
-            on_click=AdvisorState.sair,
-            variant="ghost",
-            size="2",
-            style={"color": "rgba(255,255,255,0.85)"},
-            _hover={"background_color": "rgba(255,255,255,0.14)"},
-        ),
+        _botao_header("repeat", "Trocar de modo", on_click=AdvisorState.trocar_modo),
+        _botao_header("key-round", "Configurações", on_click=AdvisorState.abrir_config),
+        _botao_zerar_dados(),
+        _botao_header("log-out", "Sair", on_click=AdvisorState.sair),
         width="100%",
         max_width="1200px",
         align_items="center",
@@ -866,26 +873,28 @@ def _filtros_transacoes() -> rx.Component:
 
 
 def _botao_excluir_transacao(item: dict) -> rx.Component:
-    """Lixeira de uma transação (com confirmação) — para corrigir um lançamento
-    errado sem depender do chat."""
+    """Lixeira de uma transação — para corrigir um lançamento errado sem
+    depender do chat. Só pede a confirmação (`_dialogo_excluir_transacao`)."""
+    return rx.icon_button(
+        rx.icon("trash-2", size=14),
+        on_click=AdvisorState.pedir_exclusao_transacao(item["id"]),
+        variant="ghost",
+        size="1",
+        color_scheme="gray",
+        cursor="pointer",
+        aria_label="Excluir transação",
+    )
+
+
+def _dialogo_excluir_transacao() -> rx.Component:
+    """Confirmação de exclusão, única para a aba inteira: antes havia um
+    diálogo embutido em CADA linha, o que multiplicava a página por centenas
+    de transações. Agora a linha só diz qual transação é, e este diálogo abre."""
     return rx.alert_dialog.root(
-        rx.alert_dialog.trigger(
-            rx.icon_button(
-                rx.icon("trash-2", size=14),
-                variant="ghost",
-                size="1",
-                color_scheme="gray",
-                cursor="pointer",
-                aria_label="Excluir transação",
-            )
-        ),
         rx.alert_dialog.content(
             rx.alert_dialog.title("Excluir transação?"),
             rx.alert_dialog.description(
-                rx.text(
-                    item["category"], " · ", item["amount_fmt_signed"],
-                    weight="bold",
-                ),
+                rx.text(AdvisorState.exclusao_transacao_descricao, weight="bold"),
                 rx.text(
                     "Ela some do saldo, dos gráficos e dos relatórios. Não dá para desfazer.",
                     size="2",
@@ -893,12 +902,19 @@ def _botao_excluir_transacao(item: dict) -> rx.Component:
                 ),
             ),
             rx.flex(
-                rx.alert_dialog.cancel(rx.button("Cancelar", variant="soft", color_scheme="gray")),
+                rx.alert_dialog.cancel(
+                    rx.button(
+                        "Cancelar",
+                        variant="soft",
+                        color_scheme="gray",
+                        on_click=AdvisorState.cancelar_exclusao_transacao,
+                    )
+                ),
                 rx.alert_dialog.action(
                     rx.button(
                         "Excluir",
                         color_scheme="red",
-                        on_click=AdvisorState.excluir_transacao(item["id"]),
+                        on_click=AdvisorState.confirmar_exclusao_transacao,
                     )
                 ),
                 spacing="3",
@@ -906,6 +922,8 @@ def _botao_excluir_transacao(item: dict) -> rx.Component:
                 margin_top="1em",
             ),
         ),
+        open=AdvisorState.exclusao_transacao_id != 0,
+        on_open_change=AdvisorState.set_dialogo_exclusao_aberto,
     )
 
 
@@ -965,6 +983,7 @@ def transacoes_panel() -> rx.Component:
     """Conteúdo da aba Transações: filtros + lista completa agrupada por dia."""
     return rx.vstack(
         _filtros_transacoes(),
+        _dialogo_excluir_transacao(),
         rx.box(
             rx.cond(
                 AdvisorState.transacoes_agrupadas.length() > 0,
@@ -1016,7 +1035,7 @@ def _grafico_barras_mensal() -> rx.Component:
     tem_selecao = AdvisorState.relatorio_mes_selecionado != ""
     verde_base = rx.cond(tem_selecao, "#b4e3c2", COR_VERDE)
     vermelho_base = rx.cond(tem_selecao, "#f3bcb7", COR_VERMELHO)
-    return _BarChartClicavel.create(
+    grafico = _BarChartClicavel.create(
         rx.recharts.cartesian_grid(stroke_dasharray="3 3"),
         rx.recharts.x_axis(data_key="mes"),
         rx.recharts.y_axis(),
@@ -1043,6 +1062,9 @@ def _grafico_barras_mensal() -> rx.Component:
         height=260,
         width="100%",
     )
+    # Sem o contorno preto de foco que o navegador desenha em volta do
+    # gráfico depois do clique (o destaque do mês já é a cor das barras).
+    return rx.box(grafico, width="100%", style={"& *:focus": {"outline": "none"}})
 
 
 def _insight_card() -> rx.Component:
@@ -1480,7 +1502,7 @@ def _cliente_row(cliente: dict) -> rx.Component:
         rx.text(cliente["nome"], size="3", weight="medium", color="#1a2540"),
         rx.spacer(),
         rx.icon("chevron-right", size=18, color="var(--gray-8)"),
-        on_click=AdvisorState.selecionar_cliente(cliente["session_id"], cliente["nome"]),
+        on_click=AdvisorState.selecionar_cliente(cliente["session_id"]),
         width="100%",
         align_items="center",
         padding="0.75em 1em",
@@ -1571,84 +1593,210 @@ def clientes_panel() -> rx.Component:
 # --- Login e configurações (Fase 5) ---
 
 
-def auth_screen() -> rx.Component:
-    """Tela de entrada: login ou criação de conta (e-mail + senha)."""
-    criando = AdvisorState.auth_modo == "criar"
+def _auth_logo() -> rx.Component:
+    return rx.box(
+        rx.text("💰", font_size="1.4em"),
+        width="52px",
+        height="52px",
+        border_radius="16px",
+        background_color=COR_NAVY,
+        display="flex",
+        align_items="center",
+        justify_content="center",
+    )
+
+
+def _auth_mensagens() -> rx.Component:
+    """Aviso positivo (auth_info) e erro (auth_erro) das telas de login."""
+    return rx.fragment(
+        rx.cond(
+            AdvisorState.auth_info != "",
+            rx.text(AdvisorState.auth_info, size="2", color=COR_VERDE, text_align="center"),
+            rx.fragment(),
+        ),
+        rx.cond(
+            AdvisorState.auth_erro != "",
+            rx.text(AdvisorState.auth_erro, size="2", color=COR_VERMELHO, text_align="center"),
+            rx.fragment(),
+        ),
+    )
+
+
+def _auth_formulario(*filhos, on_submit) -> rx.Component:
     return rx.form(
         rx.vstack(
-            rx.box(
-                rx.text("💰", font_size="1.4em"),
-                width="52px",
-                height="52px",
-                border_radius="16px",
-                background_color=COR_NAVY,
-                display="flex",
-                align_items="center",
-                justify_content="center",
-            ),
-            rx.heading(
-                rx.cond(criando, "Criar sua conta", "Entrar na vivIA"),
-                size="6",
-                color="#1a2540",
-                text_align="center",
-            ),
-            rx.text(
-                rx.cond(
-                    criando,
-                    "Use um e-mail e uma senha de pelo menos 8 caracteres.",
-                    "Seus dados e suas chaves de API ficam ligados à sua conta.",
-                ),
-                size="2",
-                color="var(--gray-9)",
-                text_align="center",
-            ),
-            rx.input(
-                placeholder="E-mail",
-                type="email",
-                value=AdvisorState.auth_email,
-                on_change=AdvisorState.set_auth_email,
-                size="3",
-                width="100%",
-            ),
-            rx.input(
-                placeholder="Senha",
-                type="password",
-                value=AdvisorState.auth_senha,
-                on_change=AdvisorState.set_auth_senha,
-                size="3",
-                width="100%",
-            ),
-            rx.cond(
-                AdvisorState.auth_erro != "",
-                rx.text(AdvisorState.auth_erro, size="2", color=COR_VERMELHO),
-                rx.fragment(),
-            ),
-            rx.button(
-                rx.cond(criando, "Criar conta", "Entrar"),
-                type="submit",
-                size="3",
-                width="100%",
-            ),
-            rx.button(
-                rx.cond(
-                    criando,
-                    "Já tenho conta — entrar",
-                    "Ainda não tenho conta — criar",
-                ),
-                type="button",
-                on_click=AdvisorState.alternar_auth_modo,
-                variant="ghost",
-                size="2",
-            ),
+            _auth_logo(),
+            *filhos,
             spacing="3",
             align_items="center",
             width="100%",
         ),
-        on_submit=lambda _dados: AdvisorState.enviar_auth(),
+        on_submit=on_submit,
         reset_on_submit=False,
         width="100%",
         max_width="400px",
         padding="2em 1.5em",
+    )
+
+
+def _auth_titulo(titulo, subtitulo) -> rx.Component:
+    return rx.fragment(
+        rx.heading(titulo, size="6", color="#1a2540", text_align="center"),
+        rx.text(subtitulo, size="2", color="var(--gray-9)", text_align="center"),
+    )
+
+
+def _form_entrar_ou_criar() -> rx.Component:
+    """Login ou criação de conta (e-mail + senha)."""
+    criando = AdvisorState.auth_modo == "criar"
+    return _auth_formulario(
+        _auth_titulo(
+            rx.cond(criando, "Criar sua conta", "Entrar na vivIA"),
+            rx.cond(
+                criando,
+                "Use um e-mail e uma senha de pelo menos 8 caracteres.",
+                "Seus dados e suas chaves de API ficam ligados à sua conta.",
+            ),
+        ),
+        rx.input(
+            placeholder="E-mail",
+            type="email",
+            value=AdvisorState.auth_email,
+            on_change=AdvisorState.set_auth_email,
+            size="3",
+            width="100%",
+        ),
+        rx.input(
+            placeholder="Senha",
+            type="password",
+            value=AdvisorState.auth_senha,
+            on_change=AdvisorState.set_auth_senha,
+            size="3",
+            width="100%",
+        ),
+        _auth_mensagens(),
+        rx.button(
+            rx.cond(criando, "Criar conta", "Entrar"),
+            type="submit",
+            size="3",
+            width="100%",
+        ),
+        rx.cond(
+            criando,
+            rx.fragment(),
+            rx.button(
+                "Esqueci minha senha",
+                type="button",
+                on_click=AdvisorState.ir_para_esqueci_senha,
+                variant="ghost",
+                size="2",
+            ),
+        ),
+        rx.button(
+            rx.cond(
+                criando,
+                "Já tenho conta — entrar",
+                "Ainda não tenho conta — criar",
+            ),
+            type="button",
+            on_click=AdvisorState.alternar_auth_modo,
+            variant="ghost",
+            size="2",
+        ),
+        on_submit=lambda _dados: AdvisorState.enviar_auth(),
+    )
+
+
+def _form_esqueci_senha() -> rx.Component:
+    """Passo 1 da recuperação: informar o e-mail para receber o código."""
+    return _auth_formulario(
+        _auth_titulo(
+            "Recuperar senha",
+            "Informe o e-mail da sua conta. Enviaremos um código para você criar uma senha nova.",
+        ),
+        rx.input(
+            placeholder="E-mail",
+            type="email",
+            value=AdvisorState.auth_email,
+            on_change=AdvisorState.set_auth_email,
+            size="3",
+            width="100%",
+        ),
+        _auth_mensagens(),
+        rx.button("Enviar código", type="submit", size="3", width="100%"),
+        rx.button(
+            "Já tenho um código",
+            type="button",
+            on_click=AdvisorState.ir_para_codigo_recebido,
+            variant="soft",
+            size="2",
+        ),
+        rx.button(
+            "Voltar para o login",
+            type="button",
+            on_click=AdvisorState.voltar_para_login,
+            variant="ghost",
+            size="2",
+        ),
+        on_submit=lambda _dados: AdvisorState.enviar_codigo_redefinicao(),
+    )
+
+
+def _form_redefinir_senha() -> rx.Component:
+    """Passo 2 da recuperação: código recebido por e-mail + senha nova."""
+    return _auth_formulario(
+        _auth_titulo(
+            "Criar nova senha",
+            "Digite o código que chegou no seu e-mail e escolha uma senha nova "
+            "(mínimo de 8 caracteres).",
+        ),
+        rx.input(
+            placeholder="E-mail",
+            type="email",
+            value=AdvisorState.auth_email,
+            on_change=AdvisorState.set_auth_email,
+            size="3",
+            width="100%",
+        ),
+        rx.input(
+            placeholder="Código (ex.: ABCD-2345)",
+            value=AdvisorState.auth_codigo,
+            on_change=AdvisorState.set_auth_codigo,
+            size="3",
+            width="100%",
+            auto_complete=False,
+        ),
+        rx.input(
+            placeholder="Nova senha",
+            type="password",
+            value=AdvisorState.auth_senha_nova,
+            on_change=AdvisorState.set_auth_senha_nova,
+            size="3",
+            width="100%",
+        ),
+        _auth_mensagens(),
+        rx.button("Salvar nova senha", type="submit", size="3", width="100%"),
+        rx.button(
+            "Voltar para o login",
+            type="button",
+            on_click=AdvisorState.voltar_para_login,
+            variant="ghost",
+            size="2",
+        ),
+        on_submit=lambda _dados: AdvisorState.confirmar_redefinicao(),
+    )
+
+
+def auth_screen() -> rx.Component:
+    """Tela de entrada: login, criação de conta ou recuperação de senha."""
+    return rx.cond(
+        AdvisorState.auth_modo == "esqueci",
+        _form_esqueci_senha(),
+        rx.cond(
+            AdvisorState.auth_modo == "redefinir",
+            _form_redefinir_senha(),
+            _form_entrar_ou_criar(),
+        ),
     )
 
 
@@ -1704,6 +1852,50 @@ def _chave_row(item: dict) -> rx.Component:
     )
 
 
+def _alterar_senha_secao() -> rx.Component:
+    """Bloco 'Alterar senha' da tela de Configurações."""
+    return rx.form(
+        rx.vstack(
+            rx.text("Alterar senha", weight="bold", size="2", color="#1a2540"),
+            rx.input(
+                placeholder="Senha atual",
+                type="password",
+                value=AdvisorState.cfg_senha_atual,
+                on_change=AdvisorState.set_cfg_senha_atual,
+                size="2",
+                width="100%",
+            ),
+            rx.input(
+                placeholder="Nova senha (mínimo de 8 caracteres)",
+                type="password",
+                value=AdvisorState.cfg_senha_nova,
+                on_change=AdvisorState.set_cfg_senha_nova,
+                size="2",
+                width="100%",
+            ),
+            rx.cond(
+                AdvisorState.cfg_senha_msg != "",
+                rx.text(
+                    AdvisorState.cfg_senha_msg,
+                    size="2",
+                    color=rx.cond(AdvisorState.cfg_senha_ok, COR_VERDE, COR_VERMELHO),
+                ),
+                rx.fragment(),
+            ),
+            rx.button("Alterar senha", type="submit", size="2"),
+            spacing="2",
+            align_items="start",
+            width="100%",
+        ),
+        on_submit=lambda _dados: AdvisorState.alterar_senha_conta(),
+        reset_on_submit=False,
+        width="100%",
+        padding="0.75em",
+        border="1px solid #e7e9f5",
+        border_radius="12px",
+    )
+
+
 def config_dialog() -> rx.Component:
     """Janela de Configurações: conta e chaves de API do usuário logado."""
     return rx.dialog.root(
@@ -1726,6 +1918,7 @@ def config_dialog() -> rx.Component:
                     rx.text(AdvisorState.config_msg, size="2", color="var(--gray-11)"),
                     rx.fragment(),
                 ),
+                _alterar_senha_secao(),
                 spacing="3",
                 width="100%",
                 margin_top="1em",
@@ -1738,6 +1931,8 @@ def config_dialog() -> rx.Component:
                 margin_top="1em",
             ),
             max_width="520px",
+            max_height="90vh",
+            overflow_y="auto",
         ),
         open=AdvisorState.mostrar_config,
         on_open_change=AdvisorState.set_config_aberta,

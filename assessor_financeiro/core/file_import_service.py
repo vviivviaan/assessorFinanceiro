@@ -100,19 +100,50 @@ def _padronizar_colunas(bruto: pd.DataFrame) -> pd.DataFrame:
     return bruto.reset_index(drop=True)
 
 
+def _decodificar_csv(raw_bytes: bytes) -> str:
+    """Texto do CSV: UTF-8 (com ou sem BOM) e, se não for, Latin-1/Windows-1252,
+    que é como muitos bancos e o Excel no Windows exportam."""
+    for codificacao in ("utf-8-sig", "cp1252"):
+        try:
+            return raw_bytes.decode(codificacao)
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("latin-1")
+
+
+def _detectar_separador(texto: str) -> str:
+    """Separador de colunas: vírgula (padrão), ponto e vírgula (Excel/bancos
+    brasileiros, onde a vírgula é o separador decimal) ou tabulação."""
+    primeira_linha = next((linha for linha in texto.splitlines() if linha.strip()), "")
+    for separador in (";", "\t"):
+        if primeira_linha.count(separador) >= 2:
+            return separador
+    return ","
+
+
 def parse_transacoes_csv(raw_bytes: bytes) -> pd.DataFrame:
     """Lê os bytes de um CSV de extrato/fatura e retorna um DataFrame limpo.
 
     Colunas na ordem: data, descricao, valor e (opcional) tipo. Funciona com
-    ou sem linha de cabeçalho (detectada automaticamente).
+    ou sem linha de cabeçalho (detectada automaticamente), separado por
+    vírgula, ponto e vírgula ou tabulação, em UTF-8 ou Latin-1.
     """
-    bruto = pd.read_csv(
-        io.BytesIO(raw_bytes),
-        header=None,
-        dtype=str,
-        keep_default_na=False,
-        encoding="utf-8",  # Garante a leitura correta de acentos como 'Crédito'
-    )
+    texto = _decodificar_csv(raw_bytes)
+    try:
+        bruto = pd.read_csv(
+            io.StringIO(texto),
+            header=None,
+            dtype=str,
+            keep_default_na=False,
+            sep=_detectar_separador(texto),
+        )
+    except pd.errors.EmptyDataError:
+        raise ErroImportacao("O arquivo está vazio.") from None
+    except pd.errors.ParserError:
+        raise ErroImportacao(
+            "Não consegui ler o CSV: as linhas não têm todas o mesmo número de "
+            "colunas. Confira se é data, descrição, valor e (opcional) tipo."
+        ) from None
     return _padronizar_colunas(bruto)
 
 

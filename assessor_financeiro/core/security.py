@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -58,14 +59,14 @@ def hash_token(token: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _fernet() -> Fernet:
+def _chave_mestra() -> bytes:
     chave_env = os.getenv("VIVIA_SECRET_KEY")
     if chave_env:
-        return Fernet(chave_env.encode("utf-8"))
+        return chave_env.encode("utf-8")
 
     caminho = Path(os.getenv("VIVIA_SECRET_FILE", ".vivia_secret_key"))
     if caminho.exists():
-        return Fernet(caminho.read_bytes().strip())
+        return caminho.read_bytes().strip()
 
     chave = Fernet.generate_key()
     caminho.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +75,12 @@ def _fernet() -> Fernet:
         caminho.chmod(0o600)
     except OSError:  # Windows pode não suportar chmod; o arquivo continua local
         pass
-    return Fernet(chave)
+    return chave
+
+
+@lru_cache(maxsize=1)
+def _fernet() -> Fernet:
+    return Fernet(_chave_mestra())
 
 
 def cifrar(texto: str) -> str:
@@ -91,6 +97,41 @@ def decifrar(cifrado: str) -> str | None:
 
 def limpar_cache_chave_mestra() -> None:
     """Usado nos testes, para trocar a chave mestra entre um teste e outro."""
+    _chave_mestra.cache_clear()
     _fernet.cache_clear()
+
+
+# --- Código de redefinição de senha ---
+#
+# Sem tabela nova: o código é calculado (HMAC) a partir da chave mestra, do e-mail,
+# do hash da senha ATUAL e de uma janela de 15 minutos. Por isso ele:
+#   - expira sozinho (vale na janela em que foi gerado e na seguinte: 15 a 30 min);
+#   - deixa de valer assim que a senha muda (o hash muda), então só serve uma vez;
+#   - não pode ser calculado por quem tem só o banco (falta a chave mestra).
+JANELA_CODIGO_SEG = 15 * 60
+_ALFABETO_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 32 símbolos, sem I/O/0/1
+
+
+def _codigo_da_janela(email: str, senha_hash: str, janela: int) -> str:
+    mensagem = f"{email}|{senha_hash}|{janela}".encode("utf-8")
+    mac = hmac.new(_chave_mestra(), mensagem, hashlib.sha256).digest()
+    numero = int.from_bytes(mac[:5], "big")  # 40 bits = 8 símbolos de 5 bits
+    return "".join(_ALFABETO_CODIGO[(numero >> (5 * i)) & 31] for i in range(8))
+
+
+def codigo_redefinicao(email: str, senha_hash: str, agora: float | None = None) -> str:
+    janela = int((time.time() if agora is None else agora) // JANELA_CODIGO_SEG)
+    return _codigo_da_janela(email, senha_hash, janela)
+
+
+def codigo_redefinicao_valido(
+    email: str, senha_hash: str, codigo: str, agora: float | None = None
+) -> bool:
+    informado = (codigo or "").upper().replace("-", "").replace(" ", "")
+    janela = int((time.time() if agora is None else agora) // JANELA_CODIGO_SEG)
+    return any(
+        hmac.compare_digest(informado, _codigo_da_janela(email, senha_hash, j))
+        for j in (janela, janela - 1)
+    )
 
 

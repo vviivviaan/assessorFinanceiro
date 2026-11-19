@@ -5,11 +5,11 @@
 outra coisa, só este arquivo precisa mudar — `state.py`, `core/` e `agents/`
 continuam intactos.
 """
+import datetime
+
 import reflex as rx
 
 from assessor_financeiro.config import DEFAULT_SESSION_ID
-import datetime
-
 from assessor_financeiro.models.db_models import (
     ChaveApi,
     ChatMessage,
@@ -112,6 +112,18 @@ def list_clientes(usuario_id: int | None = None) -> list[Cliente]:
         if usuario_id is not None:
             consulta = consulta.filter(Cliente.usuario_id == usuario_id)
         return consulta.order_by(Cliente.criado_em.desc()).all()
+
+
+def get_cliente(session_id: str, usuario_id: int) -> Cliente | None:
+    """O cliente `session_id`, mas só se pertencer a `usuario_id`. É a checagem
+    de dono usada antes de abrir os dados de um cliente: o session_id chega do
+    navegador, então não pode ser aceito sem conferir de quem ele é."""
+    with rx.session() as db:
+        return (
+            db.query(Cliente)
+            .filter(Cliente.session_id == session_id, Cliente.usuario_id == usuario_id)
+            .first()
+        )
 
 
 def create_cliente(nome: str, session_id: str, usuario_id: int | None = None) -> Cliente:
@@ -247,6 +259,22 @@ def delete_sessao(token_hash: str) -> None:
     with rx.session() as db:
         db.query(SessaoUsuario).filter(SessaoUsuario.token_hash == token_hash).delete()
         db.commit()
+
+
+def delete_sessoes_do_usuario(usuario_id: int) -> None:
+    """Encerra todos os logins do usuário (usado ao redefinir a senha)."""
+    with rx.session() as db:
+        db.query(SessaoUsuario).filter(SessaoUsuario.usuario_id == usuario_id).delete()
+        db.commit()
+
+
+def atualizar_senha(usuario_id: int, senha_hash: str) -> None:
+    with rx.session() as db:
+        usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+        if usuario is not None:
+            usuario.senha_hash = senha_hash
+            db.add(usuario)
+            db.commit()
 
 
 def list_chaves_api(usuario_id: int) -> list[ChaveApi]:

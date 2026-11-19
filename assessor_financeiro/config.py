@@ -10,9 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Sessão ---
-# Hoje o app trata todo mundo como um único usuário fixo. Se no futuro vocês
-# quiserem multiusuário de verdade, esse é o único ponto que precisa mudar
-# (por exemplo, gerando um session_id por login).
+# Perfil único que existia ANTES do login por usuário. Hoje cada conta tem o
+# próprio perfil ("usuario_<id>", ver core/auth_service.py) e cada cliente o
+# seu; este valor só é usado como padrão dos repositórios e para a primeira
+# conta adotar os dados antigos (`adotar_dados_legados`).
 DEFAULT_SESSION_ID = "default_user"
 
 # --- Modo de uso (Fase 7 — Pessoal x Assessor Financeiro multiempresa) ---
@@ -28,17 +29,20 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
 EXTRACTOR_LLM_PROVIDER = os.getenv("EXTRACTOR_LLM_PROVIDER", "groq").lower()
 ADVISOR_LLM_PROVIDER = os.getenv("ADVISOR_LLM_PROVIDER", "openai").lower()
 
-GROQ_MODEL_ID = "openai/gpt-oss-120b"
-OPENAI_MODEL_ID = "gpt-4o-mini"
-GOOGLE_MODEL_ID = "gemini-1.5-pro"
+# Modelo de cada provedor. Os provedores desativam modelos antigos de tempos
+# em tempos; quando isso acontecer, dá pra trocar pelo .env (ex.:
+# GOOGLE_MODEL_ID=...) sem editar o código nem refazer o deploy do zero.
+GROQ_MODEL_ID = os.getenv("GROQ_MODEL_ID", "openai/gpt-oss-120b")
+OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini")
+GOOGLE_MODEL_ID = os.getenv("GOOGLE_MODEL_ID", "gemini-3.8-flash")
 # Claude (Anthropic) — provedor OPCIONAL. Se o usuário cadastrar essa chave em
 # Configurações, o conselheiro passa a usá-la (respostas de maior qualidade).
 # Sem ela, o app funciona normalmente com Groq/OpenAI/Google.
-ANTHROPIC_MODEL_ID = "claude-sonnet-4-5"
+ANTHROPIC_MODEL_ID = os.getenv("ANTHROPIC_MODEL_ID", "claude-sonnet-5-5")
 
 # --- Chaves de API ---
 # Cada provedor suportado tem sua chave em uma variável de ambiente própria
-# (nunca hardcoded aqui). Isso permite ter as três configuradas ao mesmo
+# (nunca hardcoded aqui). Isso permite ter todas configuradas ao mesmo
 # tempo no .env e alternar entre elas só trocando LLM_PROVIDER /
 # EXTRACTOR_LLM_PROVIDER / ADVISOR_LLM_PROVIDER, sem editar código.
 # Em produção (app aberto a outras pessoas) as chaves do .env NÃO devem ser

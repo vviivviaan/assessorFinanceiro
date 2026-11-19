@@ -1,7 +1,8 @@
 """Modelos de banco de dados (ORM via Reflex/SQLModel).
 
-Mantidos exatamente como no projeto original — só foram movidos para cá para
-que o resto do sistema não precise saber que o Reflex é o ORM usado por trás.
+Ficam isolados aqui para que o resto do sistema não precise saber que o
+Reflex é o ORM usado por trás. Mudou um modelo? Gere a migração com
+`reflex db makemigrations` e confira o arquivo criado em `alembic/versions/`.
 """
 import datetime
 from typing import Optional
@@ -40,7 +41,8 @@ class Cliente(rx.Model, table=True):
     jeito que já funciona hoje, só trocando qual session_id está "ativo"."""
 
     nome: str
-    session_id: str
+    # Único: dois clientes com o mesmo session_id compartilhariam os dados.
+    session_id: str = Field(unique=True, index=True)
     criado_em: Optional[datetime.datetime] = Field(default_factory=datetime.datetime.now)
     # Dono do cliente (login). Nulo = cliente criado antes do login existir;
     # o primeiro usuário cadastrado adota esses registros.
@@ -70,7 +72,7 @@ class Usuario(rx.Model, table=True):
 
 
 class ChaveApi(rx.Model, table=True):
-    """Chave de API de um provedor de LLM (groq/openai/google) de um usuário,
+    """Chave de API de um provedor de LLM (groq/openai/google/anthropic) de um usuário,
     guardada CRIPTOGRAFADA (ver core/security.py)."""
 
     usuario_id: int = Field(index=True)

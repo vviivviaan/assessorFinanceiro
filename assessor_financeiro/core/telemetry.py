@@ -34,7 +34,7 @@ if not _logger.handlers:
 PRECO_USD_POR_MILHAO_TOKENS: dict[str, tuple[float, float]] = {
     "openai/gpt-oss-120b": (0.15, 0.75),
     "gpt-4o-mini": (0.15, 0.60),
-    "gemini-1.5-pro": (1.25, 5.00),
+    # Modelos sem preço cadastrado aqui ficam com custo estimado `null` no log.
 }
 
 
